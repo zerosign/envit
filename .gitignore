@@ -199,3 +199,4 @@ tags
 .history
 
 # End of https://www.gitignore.io/api/emacs,rust,vim,visualstudiocode,sublimetext,intellij
+target
