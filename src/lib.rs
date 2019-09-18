@@ -1,95 +1,95 @@
-use std::{
-    collections::BTreeMap,
-    io::{self, BufRead},
-};
+#![feature(is_sorted)]
 
-#[derive(Debug, PartialOrd, PartialEq)]
-pub enum Value {
-    Integer(i64),
-    Double(f64),
-    String(String),
-    Bool(bool),
-    Optional(Option<Box<Value>>),
-    Array(Vec<Value>),
-    Object(Box<BTreeMap<String, Value>>),
-}
+//!`serde-env` is a library for deserializing environment variables like structure into typesafe structs.
+//!
+//! # Overview
+//!
+//! Entrypoint of deserialization for this crates are function `serde_env::deserialize_envs`. It accepts
+//! `impl Iterator<Item=Into<Pair<'_>>>`, this iterator can be build from `serde_env::dotenv` function.
+//!
+//! ```rust
+//! use serde_env::{deserialize_envs, dotenv};
+//! use std::io::Cursor;
+//!
+//! let raw = r#"CONFIG__DATABASE__NAME=name
+//! CONFIG__DATABASE__USERNAME=username
+//! CONFIG__DATABASE__CREDENTIAL__TYPE=password
+//! CONFIG__DATABASE__CREDENTIAL__PASSWORD=some_password
+//! CONFIG__DATABASE__CONNECTION__POOL=10
+//! CONFIG__DATABASE__CONNECTION__TIMEOUT=10
+//! CONFIG__DATABASE__CONNECTION__RETRIES=10,20,30
+//! # CONFIG__APPLICATION__ENV=development
+//! CONFIG__APPLICATION__LOGGER__LEVEL=info"#;
+//!
+//! let envs = dotenv(Cursor::new(raw));
+//!
+//! assert!(deserialize_envs(envs).is_ok());
+//!
+//! ```
+//!
+//!
 
-pub type Pair<T> = (T, String);
+pub mod de;
+pub mod error;
+pub mod options;
+pub mod types;
+pub mod value;
 
-#[derive(Debug)]
-pub enum PairError {
-    EmptyPair,
-    IncompletePair,
-    SizeError,
-}
+use std::io::BufRead;
 
-#[derive(Debug)]
-pub enum Error {
-    ParseError(io::Error),
-    PairError(PairError),
-}
+use error::{Error, PairError};
+use types::{Pair, PairSeq};
 
-pub fn parse_env<'a, R>(reader: R) -> Vec<Result<Pair<Vec<String>>, Error>>
+//
+//
+//
+//
+pub fn dotenv<'a, R>(reader: R) -> PairSeq<'a>
 where
-    R: BufRead,
+    R: io::BufRead,
 {
-    reader
-        .lines()
-        .map(move |r| r.map_err(|e| Error::ParseError(e)))
-        .map(move |r| r.map(move |line| String::from(line.trim())))
-        .filter(|r| {
-            r.as_ref()
-                .map(|line| !line.is_empty() && !line.starts_with('#'))
-                .unwrap_or(false)
-        })
-        // Iter<Result<String>>
-        .map(move |r| {
-            r.and_then(|line| {
-                let pair = line.split('=').collect::<Vec<&str>>();
+    PairSeq::from(reader.lines().filter_map(move |r| match r {
+        Ok(ref line) => {
+            let line = line.trim();
 
-                match *pair {
-                    [] => Err(Error::PairError(PairError::EmptyPair)),
-                    [_] => Err(Error::PairError(PairError::IncompletePair)),
-                    [key, value] => {
-                        let fields = key
-                            .split("__")
-                            .map(move |line| line.to_lowercase())
-                            .collect::<Vec<String>>();
+            // ignore comments
+            if !line.starts_with('#') {
+                let words = line.split('=').map(|v| v.trim()).collect::<Vec<&str>>();
 
-                        Ok((fields, String::from(value)))
-                    }
-                    _ => Err(Error::PairError(PairError::SizeError)),
+                match &words[..] {
+                    &[key, value] => Some(Pair::new(String::from(key), String::from(value))),
+                    _ => None,
                 }
-            })
-        })
-        .collect()
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }))
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{parse_env, Value};
-    use std::{collections::BTreeMap, io::Cursor};
-
-    #[test]
-    fn parse_simple_envs() {
-        let raw = r#"
-    CONFIG__DATABASE__NAME=name
-    CONFIG__DATABASE__USERNAME=username
-    CONFIG__DATABASE__CREDENTIAL__TYPE=password
-    CONFIG__DATABASE__CREDENTIAL__PASSWORD=some_password
-    CONFIG__DATABASE__CONNECTION__POOL=10
-    CONFIG__DATABASE__CONNECTION__TIMEOUT=10
-    CONFIG__DATABASE__CONNECTION__RETRIES=10,20,30
-    CONFIG__APPLICATION__ENV=development
-    CONFIG__APPLICATION__LOGGER__LEVEL=info"#;
-
-        let reader = Cursor::new(raw);
-
-        let results = parse_env(reader);
-        let mut root = BTreeMap::new();
-
-        // results.fold(|| {})
-
-        // println!("results : {:?}", results);
+// Check whether there is anomaly of duplicated inferred value
+// in the pairs, we assume that the input is already sorted.
+//
+// Example:
+//
+// ```env
+// DATABASE_USER_NAME="test"
+// DATABASE_USER="test"
+// ```
+//
+// With this there is a conflict between `database.user` types, since
+// it can be String or Object.
+//
+pub fn verify_tree<'a, I>(iter: I) -> Result<I, Error>
+where
+    I: Iterator<Item = Pair<'a>>,
+{
+    // check whether iter is sorted or not
+    // if iter is not sorted then return the error
+    if iter.is_sorted_by_key(|pair| pair.field()) {
+        Ok(iter)
+    } else {
+        Err(Error::UnsortedError)
     }
 }
