@@ -9,6 +9,13 @@ use std::{
     iter::FromIterator,
 };
 
+pub trait Parser {
+    type Item: Sized;
+    type Error: Debug;
+
+    fn parse(raw: &str) -> Result<Self::Item, Self::Error>;
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Pair {
     pub fields: Vec<String>,

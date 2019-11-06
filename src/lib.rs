@@ -76,6 +76,14 @@ fn lookup_branch(last: Vec<String>, current: Vec<String>) -> Option<Diff> {
     None
 }
 
+#[inline]
+fn dummy_childs<I>(iter: I, root: &mut HashMap<String. Value>) -> Result<HashMap<String, Value>, Error> where I: IntoIterator<Item = String>{
+    iter.fold(root, move|&mut s, item| {
+        let mut child = HashMap::new();
+        s.insert(item, child).ok_or(Error::UnknownError(String::from("can't insert item into parent")))
+    })
+}
+
 ///
 /// This function will transform recursively [`PairSeq`](PairSeq) into
 /// [`Value`](Value).
@@ -133,13 +141,8 @@ fn transform<I>(iter: &mut I, state: Option<State>) -> Result<Value, Error> wher
                             let mut root = HashMap::new();
 
                             // create last branch by iterating branches
-                            let mut cursor = root;
+                            let mut cursor = dummy_childs(last, &mut root)?;
 
-                            for n in last.iter() {
-                                let mut child = HashMap::new();
-                                cursor.insert(n, Value::Object(child));
-                                cursor = child;
-                            }
                             // insert last branch inner into the last segment
                             cursor.insert(inner);
 
@@ -160,29 +163,34 @@ fn transform<I>(iter: &mut I, state: Option<State>) -> Result<Value, Error> wher
                         },
                         Some(Diff { shared, first, second }) => {
                             // TODO(@zerosign): some twisting magic needed in here
+                            let mut root = HashMap::new();
+                            let mut cursor = dummy_childs(shared, &mut root);
+
+
+
                         },
                     }
                 }
 
             }
-    } else {
-        // this is the base case
-        match state {
-            Some( State { last, inner } ) => {
-                // check last parent is empty or not (mostly it's not) :))
-                if last.is_empty() {
-                    Ok(inner)
-                } else {
-                    let parent = &last[last.len()-1];
-                    let fields = &last[0..last.len() - 1];
+        } else {
+            // this is the base case
+            match state {
+                Some( State { last, inner } ) => {
+                    // check last parent is empty or not (mostly it's not) :))
+                    if last.is_empty() {
+                        Ok(inner)
+                    } else {
+                        let parent = &last[last.len()-1];
+                        let fields = &last[0..last.len() - 1];
 
-                    let root = fields.iter().fold(Value::Object(HashMap::new()), |&s, item| {
-                        match s {
-                            Value::Object(&mut h) => {
-                                let mut child = HashMap::new();
-                                h.insert(item, Value::Object(child)).ok_or(|_| Error::UnknownError(String::from("already exists")))
-                            },
-                            _ => Error::UnknownError(String::from("type should be an `Value::Object`"))
+                        let root = fields.iter().fold(Value::Object(HashMap::new()), |&s, item| {
+                            match s {
+                                Value::Object(&mut h) => {
+                                    let mut child = HashMap::new();
+                                    h.insert(item, Value::Object(child)).ok_or(|_| Error::UnknownError(String::from("already exists")))
+                                },
+                                _ => Error::UnknownError(String::from("type should be an `Value::Object`"))
                         }
                     })?;
 

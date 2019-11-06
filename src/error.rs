@@ -2,6 +2,18 @@ use serde::de::Error as SerdeError;
 use std::{error::Error as StdError, fmt, io};
 
 #[derive(Debug)]
+pub enum PrimitiveError {
+    EmptyStr,
+    NumberError,
+}
+
+#[derive(Debug)]
+pub enum ValueError {
+    PrimitiveError(PrimitiveError),
+    EmptyStr,
+}
+
+#[derive(Debug)]
 pub enum PairError {
     EmptyPair,
     IncompletePair(String),
