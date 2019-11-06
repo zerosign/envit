@@ -1,123 +1,66 @@
 //! # Overview
 //!
-//! Pair should be able to be sorted by key, so that there we don't need
-//! to query the node siblings when recurse propagating back into the parent.
-//!
-//!
 //!
 
-use itertools::Itertools;
-use std::{borrow::Cow, collections::HashMap};
+use std::{
+    borrow::Cow,
+    cmp::Ordering,
+    collections::{binary_heap::Iter, BinaryHeap},
+    iter::FromIterator,
+};
 
-// Temporary intermediate struct to holds pair of string from envs.
-//
-// ```rust
-//
-// let p : Pair = Pair::new("test", "value").into();
-//
-// assert_eq!(p.field(), "test");
-// assert_eq!(p.value(), "value");
-//
-// ```
-//
-#[derive(Debug)]
-pub struct Pair<'a>(Cow<'a, str>, Cow<'a, str>);
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct Pair {
+    pub fields: Vec<String>,
+    pub value: String,
+}
 
-impl<'a> Into<Pair<'a>> for Pair<'a> {
-    fn into(self) -> Pair<'a> {
-        Pair(self.0, self.1)
+impl PartialOrd for Pair {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
-impl<'a> Pair<'a> {
+impl Pair {
     #[inline]
-    pub fn new<S>(l: S, r: S) -> Self
+    pub fn new<'a, I>(l: I, r: &'a str) -> Self
     where
-        S: Into<Cow<'a, str>>,
+        I: Iterator<Item = &'a str>,
     {
-        Pair(l.into(), r.into())
-    }
-
-    #[inline]
-    pub fn field(&self) -> Cow<'a, str> {
-        self.0.clone()
-    }
-
-    #[inline]
-    pub fn value(&self) -> Cow<'a, str> {
-        self.1.clone()
+        Pair {
+            fields: l.map(String::from).collect(),
+            value: String::from(r),
+        }
     }
 }
 
-//
-// Newtype that holds table lookup for parent & children relations.
-//
-// let relations = Relations::new();
-//
-//
-pub type Relations = HashMap<Option<usize>, Vec<usize>>;
-
-impl Relations {
-    #[inline]
-    pub fn new() -> Relations {
-        Relations(HashMap::new())
-    }
-
-    #[inline]
-    pub fn lookup(&self, id: usize) -> Option<Vec<usize>> {
-        self.get(Some(id))
-    }
-
-    #[inline]
-    pub fn root(&self) -> Option<Vec<usize>> {
-        self.get(None)
+impl Ord for Pair {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // length > natural string order
+        self.fields.cmp(&other.fields)
     }
 }
-
-pub type PathIndex<'a> = Vec<Cow<'a, str>>;
-
-pub type LeafIndex<'a> = HashMap<usize, Cow<'a, str>>;
-
-// #[derive(Debug)]
-// pub enum Node<'a, V>
-// where
-//     V: Sized,
-// {
-//     Branch {
-//         path: NodePath<'a>,
-//         children: Vec<Node<'a, V>>,
-//     },
-//     Leaf {
-//         path: NodePath<'a>,
-//         value: V,
-//     },
-// }
-
-// //
-// // Pair should be able to be sorted by key, so that
-// // when we build the tree there will be no random query
-// // to go back to each siblings.
-// //
-// impl PartialOrd for Pair {
-//     fn partial_cmp(&self, other: &Pair) -> Option<Ordering> {
-//         Some(self.0.cmp(other.0))
-//     }
-// }
 
 #[derive(Debug)]
-pub struct PairSeq<'a>(Vec<Pair<'a>>);
+pub(crate) struct PairSeq {
+    inner: BinaryHeap<Pair>,
+}
 
-impl<'a, I, T> From<I> for PairSeq<'a>
+impl<I> From<I> for PairSeq
 where
-    T: Into<Pair<'a>>,
-    I: Iterator<Item = T>,
+    I: Iterator<Item = Pair>,
 {
     #[inline]
     fn from(iter: I) -> Self {
-        PairSeq(
-            iter.map(move |p| p.into())
-                .sorted_by_key(move |p| p.field())
-                .collect(),
-        )
+        PairSeq {
+            inner: BinaryHeap::from_iter(iter),
+        }
+    }
+}
+
+impl PairSeq {
+    #[inline]
+    pub(crate) fn iter(&self) -> Iter<Pair> {
+        self.inner.iter()
     }
 }
