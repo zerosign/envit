@@ -4,11 +4,11 @@
 //!
 //! # Overview
 //!
-//! Entrypoint of deserialization for this crates are function `serde_env::deserialize_envs`. It accepts
-//! `impl Iterator<Item=Into<Pair<'_>>>`, this iterator can be build from `serde_env::dotenv` function.
+//! Entrypoint of deserialization for this crates are function `envit::deserialize_envs`. It accepts
+//! `impl Iterator<Item=Into<Pair<'_>>>`, this iterator can be build from `envit::dotenv` function.
 //!
 //! ```rust
-//! use serde_env::{deserialize_envs, dotenv};
+//! use envit::{deserialize_envs, dotenv};
 //! use std::io::Cursor;
 //!
 //! let raw = r#"CONFIG__DATABASE__NAME=name
@@ -75,6 +75,9 @@ fn similarity<I>(last: I, current: I) -> impl I where I: IntoIterator<Item = Str
         .filter(String::eq)
 }
 
+///
+/// create dummy childs for path iterator `iter` on `root`.
+///
 #[inline]
 fn dummy_childs<I>(iter: I, root: &mut HashMap<String. Value>) -> Result<HashMap<String, Value>, Error> where I: IntoIterator<Item = String>{
     iter.fold(root, move|&mut s, item| {
