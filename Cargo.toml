@@ -8,11 +8,10 @@ edition = "2018"
 
 [dependencies]
 serde = { version = "1.0.101", optional = true }
-itertools = "0.8.0"
 derive_builder = "0.7.2"
 
 [features]
 default = []
-full = ["serde", "querable"]
-serde = []
-querable = []
+full = ["envit_serde", "envit_querable"]
+envit_serde = []
+envit_querable = []

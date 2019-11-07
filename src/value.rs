@@ -1,5 +1,8 @@
-use crate::error::{LiteralError, ValueError};
-use std::collections::HashMap;
+use crate::{
+    error::{LiteralError, ValueError},
+    types::Parser,
+};
+use std::{borrow::Cow, char, collections::HashMap};
 
 ///
 /// Number sum types.
@@ -35,7 +38,7 @@ enum State {
 
 impl Parser for Literal {
     type Item = Self;
-    type Error = Error;
+    type Error = LiteralError;
 
     /// Parse raw &str into Literal value.
     ///
@@ -50,11 +53,11 @@ impl Parser for Literal {
     ///    - double -> double | string .
     ///    - string -> string .
     ///
-    pub fn parse(raw: &str) -> Result<Self::Item, Self::Error> {
+    fn parse(raw: &str) -> Result<Self::Item, Self::Error> {
         let raw = raw.trim();
         // empty string or quoted string or boolean
         if raw.is_empty() {
-            Err(Self::Error::EmptyErr)
+            Err(Self::Error::EmptyStr)
         } else if raw.starts_with('"') && raw.ends_with('"') {
             Ok(Literal::String(String::from(&raw[1..raw.len() - 1])))
         } else if raw == "true" {
@@ -67,39 +70,48 @@ impl Parser for Literal {
             // int -> double | string .
             // double -> double | string .
             // string -> string .
-            raw.iter().fold(None, |state, item| {
+            match raw.chars().fold(None, |state, ch| {
                 match state {
                     // int -> double | string
-                    Some(State::Int) => if char::is_digit(ch) {
-                        Some(State::Int)
-                    } else if ch == '.' {
-                        Some(State::Double)
-                    } else {
-                        Some(State::String)
-                    },
+                    Some(State::Int) => {
+                        if char::is_digit(ch, 10) {
+                            Some(State::Int)
+                        } else if ch == '.' {
+                            Some(State::Double)
+                        } else {
+                            Some(State::String)
+                        }
+                    }
                     // double -> double | string
-                    Some(State::Double) => if char::is_digit(ch) {
-                        Some(State::Double)
-                    } else {
-                        Some(State::String)
-                    },
+                    Some(State::Double) => {
+                        if char::is_digit(ch, 10) {
+                            Some(State::Double)
+                        } else {
+                            Some(State::String)
+                        }
+                    }
                     // string -> string | bool .
                     Some(State::String) => Some(State::String),
-                    None => if char::is_digit(ch) {
-                        Some(State::Int)
-                    } else {
-                        Some(State::String)
+                    // None
+                    _ => {
+                        if char::is_digit(ch, 10) {
+                            Some(State::Int)
+                        } else {
+                            Some(State::String)
+                        }
                     }
                 }
-            }) match {
-                Some(State::Int) => raw.parse::<i64>()
+            }) {
+                Some(State::Int) => raw
+                    .parse::<i64>()
                     .map_err(|_| Self::Error::NumberError)
                     .map(|v| Literal::Number(Number::Integer(v))),
-                Some(State::Double) => raw.parse::<f64>()
+                Some(State::Double) => raw
+                    .parse::<f64>()
                     .map_err(|_| Self::Error::NumberError)
                     .map(|v| Literal::Number(Number::Double(v))),
-                Some(State::String) => Ok(Literal::String(raw)),
-                _ => Err(Self::Error::EmptyStr)
+                Some(State::String) => Ok(Literal::String(String::from(raw))),
+                _ => Err(Self::Error::EmptyStr),
             }
         }
     }
@@ -115,8 +127,9 @@ impl Parser for Literal {
 pub struct FlatArray(Vec<Literal>);
 
 impl FlatArray {
+    // TODO(@zerosign) : check whether it's copy or not
     pub fn as_vec(&self) -> Vec<Literal> {
-        self.inner.cloned()
+        self.0
     }
 }
 
@@ -126,13 +139,15 @@ impl FlatArray {
 pub(crate) fn lookup_quoted_sep(raw: &str, sep: char) -> Option<usize> {
     // found quoted str
     match raw.find(sep) {
-        Some(idx) => if &raw[idx-1..idx] == "\\" {
-            // escaped str, skip
-            lookup_quoted_sep(&raw[idx+1..raw.len()], sep).map(|v| v + idx)
-        } else {
-            Some(idx)
-        },
-        _ => None
+        Some(idx) => {
+            if &raw[idx - 1..idx] == "\\" {
+                // escaped str, skip
+                lookup_quoted_sep(&raw[idx + 1..raw.len()], sep).map(|v| v + idx)
+            } else {
+                Some(idx)
+            }
+        }
+        _ => None,
     }
 }
 
@@ -171,9 +186,10 @@ impl Parser for FlatArray {
 
         if raw.is_empty() {
             Err(Self::Error::EmptyStr)
-        } else if raw.starts_with('[') && raw.ends_with(']') { // detect array value
+        } else if raw.starts_with('[') && raw.ends_with(']') {
+            // detect array value
             // if its an array split based on ',' (careful of quoted str)
-            let slices = &raw[1..raw.len()-1].trim();
+            let slices = &raw[1..raw.len() - 1].trim();
             let data = vec![];
             let cursor = slices;
 
@@ -186,15 +202,15 @@ impl Parser for FlatArray {
             //
             while let Some(idx) = lookup_array_sep(cursor, ',') {
                 let el = Literal::parse(&cursor[0..idx]).map_err(Self::Error::LiteralError)?;
-                data.push_back(el);
-                cursor = cursor[idx+1..cursor.len()];
+                data.push(el);
+                cursor = &&cursor[idx + 1..cursor.len()];
             }
 
-            Ok(Value::Array(Self {
-                inner: data
-            }))
+            Ok(Value::Array(Self(data)))
         } else {
-            Literal::parse(raw).map_err(Self::Error::LiteralError)
+            Literal::parse(raw)
+                .map(Value::Literal)
+                .map_err(Self::Error::LiteralError)
         }
     }
 }
@@ -207,52 +223,93 @@ impl Parser for FlatArray {
 ///
 #[derive(Debug, PartialEq)]
 pub enum Value {
-    Literal(Literal)
-    /// in here array only can holds [`Literal`](Literal) values.
-    /// no array in array or object in array allowed.
+    Literal(Literal),
+    // in here array only can holds [`Literal`](Literal) values.
+    // no array in array or object in array allowed.
     Array(FlatArray),
     Object(HashMap<String, Value>),
 }
 
 impl Value {
+    #[inline]
+    pub fn integer<V>(v: V) -> Value
+    where
+        V: Into<i64>,
+    {
+        Value::Literal(Literal::Number(Number::Integer(v.into())))
+    }
 
     #[inline]
-    pub fn as_str() -> Option<&str> {
+    pub fn double<V>(v: V) -> Value
+    where
+        V: Into<f64>,
+    {
+        Value::Literal(Literal::Number(Number::Double(v.into())))
+    }
+
+    #[inline]
+    pub fn string<V>(v: V) -> Value
+    where
+        V: Into<String>,
+    {
+        Value::Literal(Literal::String(v.into()))
+    }
+
+    #[inline]
+    pub fn empty_object() -> Value {
+        Value::Object(HashMap::new())
+    }
+
+    #[inline]
+    pub fn list() -> Value {
+        Value::Array(FlatArray(vec![]))
+    }
+
+    #[inline]
+    pub fn bool<V>(v: V) -> Value
+    where
+        V: Into<bool>,
+    {
+        Value::Literal(Literal::Bool(v.into()))
+    }
+
+    #[inline]
+    pub fn as_str(&self) -> Option<&str> {
         match self {
-            Self::Literal(Literal::String(s)) => Some(s.into()),
-            _ => None
+            Self::Literal(Literal::String(ref s)) => Some(s),
+            _ => None,
         }
     }
 
     #[inline]
-    pub fn as_map() -> Option<HashMap<String, Value>> {
+    pub fn as_map(&self) -> Option<&HashMap<String, Value>> {
         match self {
-            Self::Object(inner) => inner.cloned(),
-            _ => None
+            Self::Object(inner) => Some(inner),
+            _ => None,
         }
     }
 
     #[inline]
-    pub fn as_vec() -> Option<Vec<Literal>> {
+    pub fn as_vec(&self) -> Option<Vec<Literal>> {
         match self {
             Self::Array(s) => Some(s.as_vec()),
-            _ => None
+            _ => None,
         }
     }
 
     #[inline]
-    pub fn as_double() -> Option<f64> {
+    pub fn as_double(&self) -> Option<f64> {
         match self {
-            Self::Literal(Literal::Double(v)) => Some(v),
-            _ => None
+            Self::Literal(Literal::Number(Number::Double(v))) => Some(*v),
+            _ => None,
         }
     }
 
     #[inline]
-    pub fn as_int() -> Option<i64> {
+    pub fn as_int(&self) -> Option<i64> {
         match self {
-            Self::Literal(Literal::Integer(v)) => Some(v),
-            _ => None
+            Self::Literal(Literal::Number(Number::Integer(v))) => Some(*v),
+            _ => None,
         }
     }
 }
@@ -261,8 +318,5 @@ impl Value {
 mod test {
 
     #[test]
-    fn test_primitive_parsing() {
-
-    }
-
+    fn test_primitive_parsing() {}
 }

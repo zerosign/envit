@@ -2,17 +2,17 @@
 //!
 //! Most of the types in here are public only to crates, except [`Parser`](Parser).
 //!
-
 use std::{
     borrow::Cow,
     cmp::Ordering,
     collections::{binary_heap::Iter, BinaryHeap},
+    fmt,
     iter::FromIterator,
 };
 
 pub trait Parser {
     type Item: Sized;
-    type Error: Debug;
+    type Error: fmt::Debug;
 
     fn parse(raw: &str) -> Result<Self::Item, Self::Error>;
 }
