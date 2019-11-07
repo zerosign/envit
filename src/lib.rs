@@ -43,9 +43,11 @@
 //!                   the function.
 //!
 //!
-//!
 
+#[cfg(feature = "serde")]
 pub mod de;
+#[cfg(feature = "querable")]
+pub mod querable;
 pub mod error;
 pub mod options;
 pub mod types;
@@ -64,16 +66,13 @@ pub(crate) struct State {
     pub inner: Value,
 }
 
-#[derive(Debug)]
-pub(crate) struct Diff {
-    pub shared: Vec<String>,
-    pub first: Vec<String>,
-    pub second: Vec<String>,
-}
-
+///
 /// returns similar paths & both diverging path
-fn lookup_branch(last: Vec<String>, current: Vec<String>) -> Option<Diff> {
-    None
+///
+fn similarity<I>(last: I, current: I) -> impl I where I: IntoIterator<Item = String> {
+    last.into_iter()
+        .zip(current)
+        .filter(String::eq)
 }
 
 #[inline]
@@ -106,7 +105,7 @@ fn transform<I>(iter: &mut I, state: Option<State>) -> Result<Value, Error> wher
                 // create temporal root node
                 let mut inner = HashMap::new();
 
-                // TODO(@zerosign) : will use Value::try_from when everything works
+                // TODO(@zerosign) : will use `Value::parse` when everything works
                 inner.insert(String::from(field), Value::String(item.value.clone()));
 
                 transform(iter, Some(State {
@@ -114,11 +113,12 @@ fn transform<I>(iter: &mut I, state: Option<State>) -> Result<Value, Error> wher
                     inner: Value::Object(inner),
                 }))
             },
-            Some(State { last, inner }) => {
+            Some(State { last, Value::Object(inner) }) => {
                 // check whether last parent is the same as current parent
                 if last == parent {
                     // if last parent equal to current parent then insert current field into this inner
                     // means it has the same parent
+                    // TODO(@zerosign) : will use `Value::parse` when everything works
                     inner.insert(String::from(field), Value::String(value.clone()));
                     transform(iter, Some(State { parent, inner }))
                 } else {
@@ -134,44 +134,63 @@ fn transform<I>(iter: &mut I, state: Option<State>) -> Result<Value, Error> wher
                     //
                     // - if there is no parent that matches both branches, just create new hashmap that points into both branch
                     //
-                    match lookup_branch(last, parent) {
-                        None => {
-                            // no parent that matches both branches
-                            // create new hashmap
-                            let mut root = HashMap::new();
+                    // A__B__C
+                    // B__C
+                    // last : A__B, C
+                    //
+                    let similar = similarity(last, parent).collect::<Vec<String>>();
+                    if similar.is_empty() {
+                        // no parent that matches both branches
+                        // create new hashmap
+                        let mut root = HashMap::new();
 
-                            // create last branch by iterating branches
-                            let mut cursor = dummy_childs(last, &mut root)?;
+                        // create last branch by iterating branches
+                        // since last is parent and its actually point up to
+                        // current path
+                        let mut cursor = dummy_childs(&last[0..last.len()-1], &mut root)?;
 
-                            // insert last branch inner into the last segment
-                            cursor.insert(inner);
+                        // insert last branch inner into the last segment
+                        // field of inner ~ last field in last
+                        cursor.insert(last[last.len()-1], inner);
 
-                            cursor = root;
+                        // create new leaf branch that holds current field & value
+                        let mut next = HashMap::new();
 
-                            let mut branch = HashMap::new();
+                        // TODO(@zerosign) : will use `Value::parse` when everything works
+                        next.insert(field, Value::String(value.clone()));
 
-                            // transform the rest
-                            transform(iter, State {
-                                last: parent.to_vec(),
-                                inner: Value::Object(branch),
-                            }).map(move|v| {
-                                // insert the result of the current branch transform
-                                // into current root and return current root
-                                root.insert(field, v);
-                                Value::Object(root)
-                            })
-                        },
-                        Some(Diff { shared, first, second }) => {
-                            // TODO(@zerosign): some twisting magic needed in here
-                            let mut root = HashMap::new();
-                            let mut cursor = dummy_childs(shared, &mut root);
+                        // transform the rest
+                        transform(iter, State {
+                            last: parent.to_vec(),
+                            inner: Value::Object(next),
+                        }).map(move|v| {
+                            // insert the result of the current branch transform
+                            // into current root and return current root
+                            root.insert(&fields[0], v);
+                            Value::Object(root)
+                        })
+                    } else {
+                        let idx = similar.len() - 1;
 
+                        let first = last[idx..last.len()];
 
+                        let mut root = HashMap::new();
+                        let mut cursor = dummy_childs(similar.into_iter(), &mut root);
 
-                        },
+                        // TODO(@zerosign): some twisting magic needed in here
+
+                        // transform the rest
+                        transform(iter, State {
+                            last: parent.to_vec(),
+                            inner: Value::Object(next),
+                        }).map(move|v| {
+                            // insert the result of the current branch transform
+                            // into current root and return current root
+                            root.insert(&fields[0], v);
+                            Value::Object(root)
+                        })
                     }
                 }
-
             }
         } else {
             // this is the base case
@@ -183,18 +202,14 @@ fn transform<I>(iter: &mut I, state: Option<State>) -> Result<Value, Error> wher
                     } else {
                         let parent = &last[last.len()-1];
                         let fields = &last[0..last.len() - 1];
-
-                        let root = fields.iter().fold(Value::Object(HashMap::new()), |&s, item| {
-                            match s {
-                                Value::Object(&mut h) => {
-                                    let mut child = HashMap::new();
-                                    h.insert(item, Value::Object(child)).ok_or(|_| Error::UnknownError(String::from("already exists")))
-                                },
-                                _ => Error::UnknownError(String::from("type should be an `Value::Object`"))
-                        }
-                    })?;
-
-                    root.insert(parent, inner).ok_or(|_| Error::UnknownError(String::from("can't insert current inner")))
+                        let mut root = HashMap::new();
+                        let _ = dummy_fields(fields, &mut root);
+                        root.insert(parent, inner).ok_or(|_| Error::UnknownError(String::from("can't insert current inner")))?;
+                        Ok(root)
+                    }
+                }
+                _ => {
+                    //
                 }
             },
             _ => Err(Error::UnknownError(String::from("state is empty")))

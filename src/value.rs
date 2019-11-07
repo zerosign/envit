@@ -1,19 +1,31 @@
-use crate::error::{PrimitiveError, ValueError};
+use crate::error::{LiteralError, ValueError};
 use std::collections::HashMap;
 
+///
+/// Number sum types.
+///
 #[derive(Debug, PartialEq)]
 pub enum Number {
     Integer(i64),
     Double(f64),
 }
 
+///
+/// Literal value sum types.
+///
+/// We differentiate primitive values from `Value`, so that
+/// our array types are flat.
+///
 #[derive(Debug, PartialEq)]
-pub enum Primitive {
+pub enum Literal {
     Number(Number),
     String(String),
     Bool(bool),
 }
 
+///
+/// State to represents parsing when scan phase is started.
+///
 #[derive(Debug, PartialEq)]
 enum State {
     String,
@@ -21,11 +33,11 @@ enum State {
     Double,
 }
 
-impl Parser for Primitive {
+impl Parser for Literal {
     type Item = Self;
     type Error = Error;
 
-    /// Parse raw &str into Primitive value.
+    /// Parse raw &str into Literal value.
     ///
     /// 1. Simple case (simple lookup)
     ///    - empty str
@@ -44,11 +56,11 @@ impl Parser for Primitive {
         if raw.is_empty() {
             Err(Self::Error::EmptyErr)
         } else if raw.starts_with('"') && raw.ends_with('"') {
-            Ok(Primitive::String(String::from(&raw[1..raw.len() - 1])))
+            Ok(Literal::String(String::from(&raw[1..raw.len() - 1])))
         } else if raw == "true" {
-            Ok(Primitive::Bool(true))
+            Ok(Literal::Bool(true))
         } else if raw == "false" {
-            Ok(Primitive::Bool(false))
+            Ok(Literal::Bool(false))
         } else {
             // need scan phase (diff integer, double and string)
             // raw -> int | double | string .
@@ -82,22 +94,28 @@ impl Parser for Primitive {
             }) match {
                 Some(State::Int) => raw.parse::<i64>()
                     .map_err(|_| Self::Error::NumberError)
-                    .map(|v| Primitive::Number(Number::Integer(v))),
+                    .map(|v| Literal::Number(Number::Integer(v))),
                 Some(State::Double) => raw.parse::<f64>()
                     .map_err(|_| Self::Error::NumberError)
-                    .map(|v| Primitive::Number(Number::Double(v))),
-                Some(State::String) => Ok(Primitive::String(raw)),
+                    .map(|v| Literal::Number(Number::Double(v))),
+                Some(State::String) => Ok(Literal::String(raw)),
                 _ => Err(Self::Error::EmptyStr)
             }
         }
     }
 }
 
+///
+/// Array inner types.
+///
+/// We use FlatArray types since in envs we could only
+/// model this kind of array.
+///
 #[derive(Debug, PartialEq)]
-pub struct LinearArray(Vec<Primitive>);
+pub struct FlatArray(Vec<Literal>);
 
-impl LinearArray {
-    pub fn as_vec(&self) -> Vec<Primitive> {
+impl FlatArray {
+    pub fn as_vec(&self) -> Vec<Literal> {
         self.inner.cloned()
     }
 }
@@ -133,10 +151,21 @@ pub(crate) fn lookup_array_sep(raw: &str, sep: char) -> Option<usize> {
     }
 }
 
-impl Parser for LinearArray {
+impl Parser for FlatArray {
     type Item = Value;
     type Error = ValueError;
 
+    ///
+    /// parser implementation for parsing FlatArray.
+    ///
+    /// flat array :
+    /// flat_array -> '[' primitive ( ',' primitive )* ']'
+    ///
+    /// things to note :
+    ///
+    /// - we need to be able to escape quotation in quoted string when trying to find
+    ///  ','.
+    ///
     fn parse(raw: &str) -> Result<Self::Item, Self::Error> {
         let raw = raw.trim();
 
@@ -156,7 +185,7 @@ impl Parser for LinearArray {
             // when idx where separator found, slice the str in [idx + 1]
             //
             while let Some(idx) = lookup_array_sep(cursor, ',') {
-                let el = Primitive::parse(&cursor[0..idx]).map_err(Self::Error::PrimitiveError)?;
+                let el = Literal::parse(&cursor[0..idx]).map_err(Self::Error::LiteralError)?;
                 data.push_back(el);
                 cursor = cursor[idx+1..cursor.len()];
             }
@@ -165,7 +194,7 @@ impl Parser for LinearArray {
                 inner: data
             }))
         } else {
-            Primitive::parse(raw).map_err(Self::Error::PrimitiveError)
+            Literal::parse(raw).map_err(Self::Error::LiteralError)
         }
     }
 }
@@ -178,22 +207,24 @@ impl Parser for LinearArray {
 ///
 #[derive(Debug, PartialEq)]
 pub enum Value {
-    Primitive(Primitive),
-    /// in here array only can holds [`Primitive`](Primitive) values.
+    Literal(Literal)
+    /// in here array only can holds [`Literal`](Literal) values.
     /// no array in array or object in array allowed.
-    Array(LinearArray),
+    Array(FlatArray),
     Object(HashMap<String, Value>),
 }
 
 impl Value {
 
+    #[inline]
     pub fn as_str() -> Option<&str> {
         match self {
-            Self::Primitive(Primitive::String(s)) => Some(s.into()),
+            Self::Literal(Literal::String(s)) => Some(s.into()),
             _ => None
         }
     }
 
+    #[inline]
     pub fn as_map() -> Option<HashMap<String, Value>> {
         match self {
             Self::Object(inner) => inner.cloned(),
@@ -201,24 +232,37 @@ impl Value {
         }
     }
 
-    pub fn as_vec() -> Option<Vec<Primitive>> {
+    #[inline]
+    pub fn as_vec() -> Option<Vec<Literal>> {
         match self {
             Self::Array(s) => Some(s.as_vec()),
             _ => None
         }
     }
 
+    #[inline]
     pub fn as_double() -> Option<f64> {
         match self {
-            Self::Primitive(Primitive::Double(v)) => Some(v),
+            Self::Literal(Literal::Double(v)) => Some(v),
             _ => None
         }
     }
 
+    #[inline]
     pub fn as_int() -> Option<i64> {
         match self {
-            Self::Primitive(Primitive::Integer(v)) => Some(v),
+            Self::Literal(Literal::Integer(v)) => Some(v),
             _ => None
         }
     }
+}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn test_primitive_parsing() {
+
+    }
+
 }

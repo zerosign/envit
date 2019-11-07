@@ -1,5 +1,6 @@
 //! # Overview
 //!
+//! Most of the types in here are public only to crates, except [`Parser`](Parser).
 //!
 
 use std::{

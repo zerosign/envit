@@ -2,14 +2,14 @@ use serde::de::Error as SerdeError;
 use std::{error::Error as StdError, fmt, io};
 
 #[derive(Debug)]
-pub enum PrimitiveError {
+pub enum LiteralError {
     EmptyStr,
     NumberError,
 }
 
 #[derive(Debug)]
 pub enum ValueError {
-    PrimitiveError(PrimitiveError),
+    LiteralError(LiteralError),
     EmptyStr,
 }
 
