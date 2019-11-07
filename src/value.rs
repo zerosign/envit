@@ -2,7 +2,7 @@ use crate::{
     error::{LiteralError, ValueError},
     types::Parser,
 };
-use std::{borrow::Cow, char, collections::HashMap};
+use std::{char, collections::HashMap};
 
 ///
 /// Number sum types.
@@ -126,13 +126,6 @@ impl Parser for Literal {
 #[derive(Debug, PartialEq)]
 pub struct FlatArray(Vec<Literal>);
 
-impl FlatArray {
-    // TODO(@zerosign) : check whether it's copy or not
-    pub fn as_vec(&self) -> Vec<Literal> {
-        self.0
-    }
-}
-
 ///
 /// recursively find index where separator `sep` is located for quoted str.
 ///
@@ -190,8 +183,8 @@ impl Parser for FlatArray {
             // detect array value
             // if its an array split based on ',' (careful of quoted str)
             let slices = &raw[1..raw.len() - 1].trim();
-            let data = vec![];
-            let cursor = slices;
+            let mut data = vec![];
+            let mut cursor = slices;
 
             //
             // quote escape by using lookup separator function.
@@ -290,9 +283,9 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_vec(&self) -> Option<Vec<Literal>> {
+    pub fn as_vec(&self) -> Option<&Vec<Literal>> {
         match self {
-            Self::Array(s) => Some(s.as_vec()),
+            Self::Array(FlatArray(s)) => Some(s),
             _ => None,
         }
     }

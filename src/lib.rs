@@ -44,17 +44,17 @@
 
 #[cfg(feature = "envit_serde")]
 pub mod de;
-#[cfg(feature = "envit_querable")]
-pub mod querable;
 pub mod error;
 pub mod options;
+#[cfg(feature = "envit_querable")]
+pub mod querable;
 pub mod types;
 pub mod value;
 
 use std::io;
 
 use error::Error;
-use std::{collections::HashMap};
+use std::collections::HashMap;
 use types::{Pair, PairSeq};
 use value::Value;
 
@@ -69,26 +69,28 @@ pub(crate) struct State {
 ///
 
 #[inline]
-fn similarity<I, O>(last: I, current: I) -> impl Iterator<Item = String> where I: IntoIterator<Item = String>  {
+fn similarity<'a, I>(last: I, current: I) -> impl Iterator<Item = &'a String>
+where
+    I: IntoIterator<Item = &'a String>,
+{
     last.into_iter()
         .zip(current)
-        .filter_map(|(l, r)| if String::eq(&l, &r) {
-            Some(l)
-        } else {
-            None
-        })
+        .filter_map(|(l, r)| if String::eq(l, r) { Some(l) } else { None })
 }
 
 ///
 /// create dummy childs for path iterator `iter` on `root`.
 ///
 #[inline]
-fn dummy_childs<I>(iter: &mut I, root: &HashMap<String, Value>) -> Result<HashMap<String, Value>, Error> where I: IntoIterator<Item = String>{
-    Ok(iter.into_iter().fold(*root, move|mut s, item| {
-        let mut child = HashMap::new();
-        s.insert(item, Value::Object(child));
+fn dummy_childs<'a, I>(iter: &I, root: &HashMap<String, Value>) -> HashMap<String, Value>
+where
+    I: Iterator<Item = &'a String>,
+{
+    iter.fold(*root, move |mut s, item| {
+        let child = HashMap::new();
+        s.insert(String::from(item), Value::Object(child));
         s
-    }))
+    })
 }
 
 ///
@@ -99,129 +101,158 @@ fn dummy_childs<I>(iter: &mut I, root: &HashMap<String, Value>) -> Result<HashMa
 /// since when there is branched node in [`PairSeq`](PairSeq), I need to
 /// do recursively transform the next iterator by abandoning current iterator flow.
 ///
-fn transform<I>(iter: &mut I, state: Option<State>) -> Result<Value, Error> where I: Iterator<Item = Pair> {
-    if let Some(Pair { fields, value }) = iter.next() {
-        // fetch current field
-        let field = &fields[fields.len() - 1];
-        // fetch current parent
-        let parent = &fields[0..fields.len() - 1];
+fn transform<I>(iter: &mut I, state: Option<State>) -> Result<Value, Error>
+where
+    I: Iterator<Item = Pair>,
+{
+    match iter.next() {
+        Some(Pair { fields, value }) => {
+            // fetch current field
+            let field = &fields[fields.len() - 1];
+            // fetch current parent
+            let parent = &fields[0..fields.len() - 1];
 
-        match state {
-            // initial state
-            None => {
-                // create temporal root node
-                let mut inner = HashMap::new();
+            match state {
+                // initial state
+                None => {
+                    // create temporal root node
+                    let mut inner = HashMap::new();
 
-                // TODO(@zerosign) : will use `Value::parse` when everything works
-                inner.insert(String::from(field), Value::string(value));
-
-                transform(iter, Some(State {
-                    last: parent.to_vec(),
-                    inner: Value::Object(inner),
-                }))
-            },
-            Some(State { last: last, inner: Value::Object(inner) }) => {
-                // check whether last parent is the same as current parent
-                if last == parent {
-                    // if last parent equal to current parent then insert current field into this inner
-                    // means it has the same parent
                     // TODO(@zerosign) : will use `Value::parse` when everything works
                     inner.insert(String::from(field), Value::string(value));
-                    transform(iter, Some(State { last: parent.to_vec(), inner: Value::Object(inner) }))
-                } else {
-                    // if last parent not equal to current parent, then it means
-                    // there is branched node somewhere in its parent
-                    // and I need to lookup where the path are being branched
-                    //
-                    // find similarity of both branch
-                    //
-                    // - if there is similarity, create parent (missing) branch [`Value::Object`](Value::Object), then
-                    //   merge two hashmap (last inner and current inner) into new HashMap. While current inner Value are
-                    //   recursively created by using another transform calls
-                    //
-                    // - if there is no parent that matches both branches, just create new hashmap that points into both branch
-                    //
-                    // A__B__C
-                    // B__C
-                    // last : A__B, C
-                    //
-                    let similar = similarity(last, parent.to_vec()).collect::<Vec<String>>();
-                    if similar.is_empty() {
-                        // no parent that matches both branches
-                        // create new hashmap
-                        let mut root = HashMap::new();
 
-                        // create last branch by iterating branches
-                        // since last is parent and its actually point up to
-                        // current path
-                        let mut cursor = dummy_childs(&mut last[0..last.len()-1].to_vec(), &mut root)?;
-
-                        // insert last branch inner into the last segment
-                        // field of inner ~ last field in last
-                        cursor.insert(last[last.len()-1], Value::Object(inner));
-
-                        // create new leaf branch that holds current field & value
-                        let mut next = HashMap::new();
-
-                        // TODO(@zerosign) : will use `Value::parse` when everything works
-                        next.insert(*field, Value::string(value));
-
-                        // transform the rest
-                        transform(iter, Some(State {
+                    transform(
+                        iter,
+                        Some(State {
                             last: parent.to_vec(),
-                            inner: Value::Object(next),
-                        })).map(move|v| {
-                            // insert the result of the current branch transform
-                            // into current root and return current root
-                            root.insert(fields[0], v);
-                            Value::Object(root)
-                        })
+                            inner: Value::Object(inner),
+                        }),
+                    )
+                }
+                Some(State {
+                    last: mut last,
+                    inner: Value::Object(mut inner),
+                }) => {
+                    // check whether last parent is the same as current parent
+                    if last == parent {
+                        // if last parent equal to current parent then insert current field into this inner
+                        // means it has the same parent
+                        // TODO(@zerosign) : will use `Value::parse` when everything works
+                        inner.insert(String::from(field), Value::string(value));
+                        transform(
+                            iter,
+                            Some(State {
+                                last: parent.to_vec(),
+                                inner: Value::Object(inner),
+                            }),
+                        )
                     } else {
-                        let idx = similar.len() - 1;
+                        // if last parent not equal to current parent, then it means
+                        // there is branched node somewhere in its parent
+                        // and I need to lookup where the path are being branched
+                        //
+                        // find similarity of both branch
+                        //
+                        // - if there is similarity, create parent (missing) branch [`Value::Object`](Value::Object), then
+                        //   merge two hashmap (last inner and current inner) into new HashMap. While current inner Value are
+                        //   recursively created by using another transform calls
+                        //
+                        // - if there is no parent that matches both branches, just create new hashmap that points into both branch
+                        //
+                        // A__B__C
+                        // B__C
+                        // last : A__B, C
+                        //
+                        let mut parent = parent.to_vec();
+                        let mut similar: Vec<String> = similarity(last.iter(), parent.iter())
+                            .map(String::from)
+                            .collect();
 
-                        let first = &last[idx..last.len()];
+                        if similar.is_empty() {
+                            // no parent that matches both branches
+                            // create new hashmap
+                            let mut root = HashMap::new();
 
-                        let mut root = HashMap::new();
-                        let mut cursor = dummy_childs(&mut similar, &mut root);
+                            // create last branch by iterating branches
+                            // since last is parent and its actually point up to
+                            // current path
+                            let mut cursor =
+                                dummy_childs(&last[0..last.len() - 1].iter(), &mut root);
 
-                        // TODO(@zerosign): some twisting magic needed in here
+                            // insert last branch inner into the last segment
+                            // field of inner ~ last field in last
+                            cursor.insert(last[last.len() - 1], Value::Object(inner));
 
-                        // transform the rest
-                        // transform(iter, State {
-                        //     last: parent.to_vec(),
-                        //     inner: Value::Object(next),
-                        // }).map(move|v| {
-                        //     // insert the result of the current branch transform
-                        //     // into current root and return current root
-                        //     root.insert(&fields[0], v);
-                        //     Value::Object(root)
-                        // })
-                        Err(Error::CustomError(String::from("unimplemented")))
+                            // create new leaf branch that holds current field & value
+                            let mut next = HashMap::new();
+
+                            // TODO(@zerosign) : will use `Value::parse` when everything works
+                            next.insert(*field, Value::string(value));
+
+                            // transform the rest
+                            transform(
+                                iter,
+                                Some(State {
+                                    last: parent,
+                                    inner: Value::Object(next),
+                                }),
+                            )
+                            .map(move |v| {
+                                // insert the result of the current branch transform
+                                // into current root and return current root
+                                root.insert(fields[0], v);
+                                Value::Object(root)
+                            })
+                        } else {
+                            let idx = similar.len() - 1;
+
+                            // first
+                            let _ = &last[idx..last.len()];
+
+                            let mut root = HashMap::new();
+
+                            // cursor
+                            let _ = dummy_childs(&similar.iter(), &root);
+
+                            // TODO(@zerosign): some twisting magic needed in here
+
+                            // transform the rest
+                            // transform(iter, State {
+                            //     last: parent.to_vec(),
+                            //     inner: Value::Object(next),
+                            // }).map(move|v| {
+                            //     // insert the result of the current branch transform
+                            //     // into current root and return current root
+                            //     root.insert(&fields[0], v);
+                            //     Value::Object(root)
+                            // })
+                            Err(Error::CustomError(String::from("unimplemented")))
+                        }
                     }
                 }
             }
-        } else {
+        }
+        _ => {
             // this is the base case
             match state {
-                Some( State { last, inner } ) => {
+                Some(State { last, inner }) => {
                     // check last parent is empty or not (mostly it's not) :))
                     if last.is_empty() {
                         Ok(inner)
                     } else {
-                        let parent = &last[last.len()-1];
+                        let parent = &last[last.len() - 1];
                         let fields = &last[0..last.len() - 1];
                         let mut root = HashMap::new();
-                        let _ = dummy_fields(fields, &mut root);
-                        root.insert(parent, inner).ok_or(|_| Error::CustomError(String::from("can't insert current inner")))?;
-                        Ok(root)
+                        let _ = dummy_childs(&fields.iter(), &mut root);
+                        root.insert(String::from(parent), inner);
+                        Ok(Value::Object(root))
                     }
                 }
                 _ => {
                     //
-                    Err(Error::CustomError(String::from("unknown i forgot this case")))
+                    Err(Error::CustomError(String::from("state is empty")))
                 }
-            },
-            _ => Err(Error::CustomError(String::from("state is empty")))
+            }
         }
     }
 }
@@ -234,22 +265,26 @@ pub fn dotenv<'a, R>(reader: R) -> Result<Value, Error>
 where
     R: io::BufRead,
 {
-    transform(&mut PairSeq::from(reader.lines().filter_map(move |r| match r {
-        Ok(ref line) => {
-            let line = line.trim();
+    transform(
+        &mut PairSeq::from(reader.lines().filter_map(move |r| match r {
+            Ok(ref line) => {
+                let line = line.trim();
 
-            // ignore comments
-            if !line.starts_with('#') {
-                let words = line.split('=').map(|v| v.trim()).collect::<Vec<&str>>();
+                // ignore comments
+                if !line.starts_with('#') {
+                    let words = line.split('=').map(|v| v.trim()).collect::<Vec<&str>>();
 
-                match &words[..] {
-                    &[key, value] => Some(Pair::new(key.split("__"), value)),
-                    _ => None,
+                    match &words[..] {
+                        [key, value] => Some(Pair::new(key.split("__"), value)),
+                        _ => None,
+                    }
+                } else {
+                    None
                 }
-            } else {
-                None
             }
-        }
-        _ => None,
-    })).iter(), None)
+            _ => None,
+        }))
+        .into_iter(),
+        None,
+    )
 }

@@ -2,13 +2,7 @@
 //!
 //! Most of the types in here are public only to crates, except [`Parser`](Parser).
 //!
-use std::{
-    borrow::Cow,
-    cmp::Ordering,
-    collections::{binary_heap::Iter, BinaryHeap},
-    fmt,
-    iter::FromIterator,
-};
+use std::{cmp::Ordering, collections::BinaryHeap, fmt, iter::FromIterator};
 
 pub trait Parser {
     type Item: Sized;
@@ -66,9 +60,12 @@ where
     }
 }
 
-impl PairSeq {
+impl IntoIterator for PairSeq {
+    type Item = Pair;
+    type IntoIter = ::std::collections::binary_heap::IntoIter<Self::Item>;
+
     #[inline]
-    pub(crate) fn iter(&self) -> Iter<Pair> {
-        self.inner.iter()
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
     }
 }
