@@ -1,10 +1,16 @@
-//! # Overview
+//! Overview
 //!
 //! Most of the types in here are public only to crates, except [`Parser`](Parser).
 //!
-use std::{cmp::Ordering, collections::BinaryHeap, fmt, iter::FromIterator};
+use std::{borrow::Cow, cmp::Ordering, collections::BinaryHeap, fmt, iter::FromIterator};
 
-pub trait Parser {
+///
+/// Parser trait for this crates.
+///
+/// Don't expose Parser trait into public API since
+/// it doesn't have good simetry on parsing an Object.
+///
+pub(crate) trait Parser {
     type Item: Sized;
     type Error: fmt::Debug;
 
@@ -12,31 +18,31 @@ pub trait Parser {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) struct Pair {
-    pub fields: Vec<String>,
-    pub value: String,
+pub(crate) struct Pair<'a> {
+    pub fields: Cow<'a, [String]>,
+    pub value: Cow<'a, str>,
 }
 
-impl PartialOrd for Pair {
+impl<'a> Pair<'a> {
+    pub fn new<I, S>(fields: I, value: S) -> Self
+    where
+        I: Iterator<Item = String>,
+        S: Into<Cow<'a, str>>,
+    {
+        Self {
+            fields: Cow::from(fields.collect::<Vec<_>>()),
+            value: S::into(value),
+        }
+    }
+}
+
+impl<'a> PartialOrd for Pair<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Pair {
-    #[inline]
-    pub fn new<'a, I>(l: I, r: &'a str) -> Self
-    where
-        I: Iterator<Item = &'a str>,
-    {
-        Pair {
-            fields: l.map(String::from).collect(),
-            value: String::from(r),
-        }
-    }
-}
-
-impl Ord for Pair {
+impl<'a> Ord for Pair<'a> {
     fn cmp(&self, other: &Self) -> Ordering {
         // length > natural string order
         self.fields.cmp(&other.fields)
@@ -44,13 +50,13 @@ impl Ord for Pair {
 }
 
 #[derive(Debug)]
-pub(crate) struct PairSeq {
-    inner: BinaryHeap<Pair>,
+pub(crate) struct PairSeq<'a> {
+    inner: BinaryHeap<Pair<'a>>,
 }
 
-impl<I> From<I> for PairSeq
+impl<'a, I> From<I> for PairSeq<'a>
 where
-    I: Iterator<Item = Pair>,
+    I: Iterator<Item = Pair<'a>>,
 {
     #[inline]
     fn from(iter: I) -> Self {
@@ -60,8 +66,8 @@ where
     }
 }
 
-impl IntoIterator for PairSeq {
-    type Item = Pair;
+impl<'a> IntoIterator for PairSeq<'a> {
+    type Item = Pair<'a>;
     type IntoIter = ::std::collections::binary_heap::IntoIter<Self::Item>;
 
     #[inline]

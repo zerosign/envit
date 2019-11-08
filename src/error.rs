@@ -1,20 +1,28 @@
 #[cfg(feature = "envit_serde")]
 use serde::de::Error as SerdeError;
-use std::{error::Error as StdError, fmt, io};
+use std::{error::Error as StdError, fmt};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LiteralError {
     EmptyStr,
     NumberError,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+pub enum ArrayError {
+    LiteralError(LiteralError),
+    EmptyStr,
+    ParseError,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ValueError {
     LiteralError(LiteralError),
+    ArrayError(ArrayError),
     EmptyStr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PairError {
     EmptyPair,
     IncompletePair(String),
@@ -50,9 +58,8 @@ impl StdError for PairError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
-    ParseError(io::Error),
     PairError(PairError),
     UnsortedError,
     CustomError(String),
@@ -61,7 +68,6 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::ParseError(e) => write!(fmt, "{}", e.description()),
             Error::PairError(e) => write!(fmt, "{}", e.description()),
             Error::UnsortedError => write!(fmt, "{}", "pair is unsorted"),
             Error::CustomError(s) => write!(fmt, "{}", s),
@@ -73,7 +79,6 @@ impl StdError for Error {
     #[inline]
     fn description(&self) -> &str {
         match self {
-            Error::ParseError(e) => e.description(),
             Error::PairError(e) => e.description(),
             Error::UnsortedError => "pair is unsorted",
             Error::CustomError(s) => s.as_ref(),
