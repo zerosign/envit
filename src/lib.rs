@@ -1,3 +1,5 @@
+#![feature(pattern)]
+
 //!`serde-env` is a library for deserializing environment variables like structure into typesafe structs.
 //!
 //! # Overview
@@ -42,7 +44,6 @@
 //!
 //!
 
-#[cfg(feature = "envit_serde")]
 pub mod de;
 pub mod error;
 pub mod options;
@@ -66,20 +67,6 @@ where
 {
     pub last: &'a [&'b str],
     pub inner: Value,
-}
-
-///
-/// returns similar paths & both diverging path
-///
-#[inline]
-fn similarity<'a, I, S>(last: I, current: I) -> impl Iterator<Item = S>
-where
-    I: IntoIterator<Item = S>,
-    S: Into<Cow<'a, str>> + Eq,
-{
-    last.into_iter()
-        .zip(current)
-        .filter_map(|(l, r)| if l.eq(&r) { Some(l) } else { None })
 }
 
 ///
@@ -135,25 +122,4 @@ where
         .into_iter(),
         None,
     )
-}
-
-#[cfg(test)]
-mod test {
-
-    use super::similarity;
-
-    #[test]
-    fn test_check_similarity() {
-        assert_eq!(
-            similarity(["test", "test"].iter().cloned(), ["test"].iter().cloned())
-                .collect::<Vec<&str>>(),
-            vec!["test"],
-        );
-
-        assert!(
-            similarity([" test", "test"].iter().cloned(), ["test"].iter().cloned())
-                .collect::<Vec<&str>>()
-                .is_empty(),
-        );
-    }
 }

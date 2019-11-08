@@ -1,4 +1,3 @@
-#[cfg(feature = "envit_serde")]
 use serde::de::Error as SerdeError;
 use std::{error::Error as StdError, fmt};
 
@@ -91,7 +90,6 @@ impl StdError for Error {
     }
 }
 
-#[cfg(feature = "envit_serde")]
 impl SerdeError for Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
         Error::CustomError(format!("{}", msg))
