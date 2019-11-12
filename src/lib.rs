@@ -49,77 +49,11 @@ pub mod error;
 pub mod options;
 #[cfg(feature = "envit_querable")]
 pub mod querable;
+// pub mod ser;
 pub mod types;
 pub mod value;
 
-use error::Error;
-use std::{borrow::Cow, char, hash::Hash, io};
-use types::{Pair, PairSeq};
-use value::Value;
-
-///
-/// State to holds inner state when doing transform.
-///
-#[derive(Debug)]
-struct State<'a, 'b>
-where
-    'b: 'a,
-{
-    pub last: &'a [&'b str],
-    pub inner: Value,
-}
-
-///
-/// This function will transform recursively [`PairSeq`](PairSeq) into
-/// [`Value`](Value).
-///
-/// I can't use fold since the algorithm are exactly doing linear transform,
-/// since when there is branched node in [`PairSeq`](PairSeq), I need to
-/// do recursively transform the next iterator by abandoning current iterator flow.
-///
-fn transform<'a, 'b, I>(iter: &mut I, state: Option<State<'a, 'b>>) -> Result<Value, Error>
-where
-    I: Iterator<Item = Pair<'a>>,
-    'a: 'b,
-{
-    Err(Error::CustomError(String::from("test")))
-}
-
-///
-///
-///
-///
-pub fn dotenv<'a, R>(reader: R) -> Result<Value, Error>
-where
-    R: io::BufRead,
-{
-    transform(
-        &mut PairSeq::from(reader.lines().filter_map(move |r| match r {
-            Ok(line) => {
-                if !line.starts_with('#') {
-                    let words = line
-                        .split('=')
-                        .map(|v| Cow::from(v.trim()))
-                        .collect::<Vec<Cow<'_, str>>>();
-
-                    // key & value exists
-                    if words.len() == 2 {
-                        let key = words[0].clone();
-
-                        Some(Pair::new(
-                            key.split("__").map(String::from),
-                            String::from(words[1].clone()),
-                        ))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }))
-        .into_iter(),
-        None,
-    )
-}
+// use error::Error;
+// use std::{borrow::Cow, io};
+// use types::{Pair, PairSeq};
+// use value::Value;

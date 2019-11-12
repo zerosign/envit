@@ -1,10 +1,22 @@
 use serde::de::Error as SerdeError;
 use std::{error::Error as StdError, fmt};
 
+// TODO: @zerosign, properly use error for defining what error or what not
+
 #[derive(Debug, PartialEq)]
 pub enum LiteralError {
     EmptyStr,
     NumberError,
+}
+
+impl fmt::Display for LiteralError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::NumberError => write!(fmt, "number parse error"),
+            Self::EmptyStr => write!(fmt, "empty string given"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -14,11 +26,33 @@ pub enum ArrayError {
     ParseError,
 }
 
+impl fmt::Display for ArrayError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::LiteralError(e) => e.fmt(fmt),
+            Self::ParseError => write!(fmt, "parse error"),
+            Self::EmptyStr => write!(fmt, "empty string given"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ValueError {
     LiteralError(LiteralError),
     ArrayError(ArrayError),
     EmptyStr,
+}
+
+impl fmt::Display for ValueError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::LiteralError(e) => e.fmt(fmt),
+            Self::ArrayError(e) => e.fmt(fmt),
+            Self::EmptyStr => write!(fmt, "empty string given"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -62,6 +96,7 @@ pub enum Error {
     PairError(PairError),
     UnsortedError,
     CustomError(String),
+    ParseError(ValueError),
 }
 
 impl fmt::Display for Error {
@@ -70,6 +105,7 @@ impl fmt::Display for Error {
             Error::PairError(e) => write!(fmt, "{}", e.description()),
             Error::UnsortedError => write!(fmt, "{}", "pair is unsorted"),
             Error::CustomError(s) => write!(fmt, "{}", s),
+            Error::ParseError(e) => write!(fmt, "{}", e),
         }
     }
 }
@@ -81,6 +117,7 @@ impl StdError for Error {
             Error::PairError(e) => e.description(),
             Error::UnsortedError => "pair is unsorted",
             Error::CustomError(s) => s.as_ref(),
+            Error::ParseError(e) => "parse error",
         }
     }
 

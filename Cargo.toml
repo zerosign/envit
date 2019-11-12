@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 serde = { version = "1.0.101" }
+bytes = "^0.4.12"
 querable = { version = "^0.0.2", optional = true }
 derive_builder = "0.7.2"
 

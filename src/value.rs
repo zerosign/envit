@@ -336,9 +336,9 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Option<&HashMap<String, Value>> {
+    pub fn insert(&mut self, k: String, v: Self) -> Option<Value> {
         match self {
-            Self::Object(inner) => Some(inner),
+            Self::Object(inner) => inner.insert(k, v),
             _ => None,
         }
     }

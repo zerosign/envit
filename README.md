@@ -5,7 +5,7 @@ serde (serializer &amp; deserializer) for environment, supports for tree &amp; a
 ## Supported formats (TODO)
 
 - Dictionary like data
-- Array like data
+- Flat array like data
 - Optional environment
 - enum data
 
