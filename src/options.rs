@@ -11,41 +11,31 @@
 //!
 
 use derive_builder::Builder;
+use std::str::pattern::Pattern;
 
-// #[derive(Builder, Debug)]
-// #[builder(setter(into))]
-// pub struct Options<'a, P>
-// where
-//     P: Pattern<'a>,
-// {
-//     array_sep: P,
-//     field_sep: P,
-//     parent: Option<String>,
-// }
+#[derive(Builder, Debug)]
+#[builder(setter(into))]
+pub struct Options<'a, P>
+where
+    P: Pattern<'a>,
+{
+    array_sep: P,
+    field_sep: P,
+    root: Option<String>,
+}
 
-// impl <'a> Options<'a, P> where P: Pattern<'a> {
-//     #[inline]
-//     pub fn array_sep(&self) -> P {
-//         self.array_sep
-//     }
+#[cfg(test)]
+mod test {
+    use super::{Options, OptionsBuilder};
 
-//     #[inline]
-//     pub fn field_sep(&self) -> P {
-//         self.field_sep
-//     }
+    #[test]
+    fn test_options_builder() {
+        let r = OptionsBuilder::default()
+            .array_sep(',')
+            .field_sep('=')
+            .root(Some("sample"))
+            .build();
 
-//     #{inline]
-//     pub fn parent(&self) -> Option<String> {
-//         self.parent
-//     }
-// }
-
-// impl<'a> Default for Options<'a> {
-//     fn default() -> Self {
-//         Options {
-//             array_sep: ";",
-//             field_sep: "__",
-//             parent: None,
-//         }
-//     }
-// }
+        assert!(r.is_ok());
+    }
+}
