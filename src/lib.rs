@@ -59,3 +59,25 @@ pub mod value;
 // use std::{borrow::Cow, io};
 // use types::{Pair, PairSeq};
 // use value::Value;
+
+// pub struct Cursor<'a> {
+//     inner: Vec<&'a str>,
+// }
+
+// impl Default for Cursor {
+//     #[inline]
+//     fn default() -> Self {
+//         Self {}
+//     }
+// }
+
+// fn transform(heap: BinaryHeap<(Vec<&'_ str>, &'_ str)>) {
+//     // create Deserializer
+
+//     let mut cursor = Cursor::default();
+
+//     heap.into_iter().map(move |item| {
+//         let fields = item.0;
+//         fields
+//     })
+// }

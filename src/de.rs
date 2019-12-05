@@ -6,12 +6,37 @@ use std::{
 };
 
 use crate::{
-    error::Error,
+    error::{Error, LiteralError},
     serde::{
         de::{self, Error as SerdeError},
         forward_to_deserialize_any,
     },
+    types::{StringDict, TreeCursor},
 };
+
+pub struct MapAccess<'a> {
+    idx: usize,
+    inner: TreeCursor<'a>,
+}
+
+impl<'de> de::MapAccess<'de> for MapAccess<'de> {
+    type Error = Error;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
+    where
+        K: de::DeserializeSeed<'de>,
+    {
+        // self.inner.indices[idx];
+        Err(Self::Error::EmptyStr)
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        Err(Self::Error::EmptyStr)
+    }
+}
 
 #[derive(Debug, PartialEq)]
 enum Sign {
@@ -36,20 +61,20 @@ struct LiteralDeserializer<'de> {
 
 impl<'de> LiteralDeserializer<'de> {
     #[inline]
-    pub fn from_str<'b>(s: &'b str) -> Result<Self, Error>
+    pub fn from_str<'b>(s: &'b str) -> Result<Self, LiteralError>
     where
         'b: 'de,
     {
         let s = s.trim();
 
         if s.is_empty() {
-            Err(Error::EmptyStr)
+            Err(LiteralError::EmptyStr)
         } else {
             Ok(Self { inner: s })
         }
     }
 
-    fn parse_literal<V>(&self, visitor: V) -> Result<V::Value, Error>
+    fn parse_literal<V>(&self, visitor: V) -> Result<V::Value, LiteralError>
     where
         V: de::Visitor<'de>,
     {
@@ -93,7 +118,7 @@ impl<'de> LiteralDeserializer<'de> {
             Some(State::Int(Sign::Signed)) => self.deserialize_i64(visitor),
             Some(State::Double) => self.deserialize_f64(visitor),
             Some(State::String) => self.deserialize_str(visitor),
-            _ => Err(Error::EmptyStr),
+            _ => Err(LiteralError::EmptyStr),
         }
     }
 }
@@ -103,13 +128,13 @@ impl<'de> LiteralDeserializer<'de> {
 //         fn $de<V>(self, visitor: V) -> Result<V::Value, Self::Error>
 //         where
 //             V: de::Visitor<'de> {
-//
+//er
 //         }
 //     })
 // }
 
 impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
-    type Error = Error;
+    type Error = LiteralError;
 
     ///
     /// only able to deserialize literal value
@@ -159,7 +184,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
         } else if self.inner == "false" {
             visitor.visit_bool(false)
         } else {
-            Err(Error::SyntaxError)
+            Err(LiteralError::SyntaxError)
         }
     }
 
@@ -169,7 +194,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<u8>()
-            .map_err(Error::custom)
+            .map_err(LiteralError::custom)
             .and_then(move |v| visitor.visit_u8(v))
     }
 
@@ -179,7 +204,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<u16>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_u16(v))
     }
 
@@ -189,7 +214,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<u32>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_u32(v))
     }
 
@@ -199,7 +224,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<u64>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_u64(v))
     }
 
@@ -209,7 +234,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<i8>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_i8(v))
     }
 
@@ -219,7 +244,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<i16>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_i16(v))
     }
 
@@ -229,7 +254,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<i32>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_i32(v))
     }
 
@@ -239,7 +264,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<i64>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_i64(v))
     }
 
@@ -249,7 +274,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<f32>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_f32(v))
     }
 
@@ -259,7 +284,7 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
     {
         self.inner
             .parse::<f64>()
-            .map_err(Error::custom)
+            .map_err(Self::Error::custom)
             .and_then(move |v| visitor.visit_f64(v))
     }
 
@@ -346,8 +371,8 @@ impl<'de> de::Deserializer<'de> for LiteralDeserializer<'de> {
 
 #[cfg(test)]
 mod test {
-    use super::{Error, LiteralDeserializer};
-    use serde::de::{Deserialize, Deserializer, Visitor};
+    use crate::serde::de::{Deserialize, Deserializer, Visitor};
+    use crate::{de::LiteralDeserializer, error::LiteralError};
 
     #[test]
     fn test_literal_serde() {
@@ -360,10 +385,11 @@ mod test {
             "2.0",
         ];
 
-        data.map(LiteralDeserializer::from_str).for_each(move |de| {
-            assert!(de.is_some());
-
-            let de = de.unwrap();
-        });
+        data.iter()
+            .map(move |s| LiteralDeserializer::from_str(s))
+            .for_each(move |de| {
+                assert!(de.is_ok());
+                let de = de.unwrap();
+            });
     }
 }

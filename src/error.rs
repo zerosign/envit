@@ -7,6 +7,9 @@ use std::{error::Error as StdError, fmt};
 pub enum LiteralError {
     EmptyStr,
     NumberError,
+    SyntaxError,
+    Unsupported,
+    CustomError(String),
 }
 
 impl fmt::Display for LiteralError {
@@ -15,7 +18,39 @@ impl fmt::Display for LiteralError {
         match self {
             Self::NumberError => write!(fmt, "number parse error"),
             Self::EmptyStr => write!(fmt, "empty string given"),
+            Self::SyntaxError => write!(fmt, "syntax error"),
+            Self::Unsupported => write!(fmt, "unsupported"),
+            Self::CustomError(s) => write!(fmt, "{}", s),
         }
+    }
+}
+
+impl StdError for LiteralError {
+    #[inline]
+    fn description(&self) -> &str {
+        match &*self {
+            Self::NumberError => "number parse error",
+            Self::EmptyStr => "empty string given",
+            Self::SyntaxError => "syntax error",
+            Self::Unsupported => "unsupported",
+            Self::CustomError(s) => &s,
+        }
+    }
+
+    #[inline]
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        None
+    }
+}
+
+impl SerdeError for LiteralError {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        Self::CustomError(format!("{}", msg))
+    }
+
+    fn missing_field(field: &'static str) -> Self {
+        // literal doesn't have missing field
+        unimplemented!()
     }
 }
 
@@ -95,6 +130,7 @@ impl StdError for PairError {
 pub enum Error {
     PairError(PairError),
     UnsortedError,
+    EmptyStr,
     CustomError(String),
     ParseError(ValueError),
 }
@@ -106,6 +142,7 @@ impl fmt::Display for Error {
             Error::UnsortedError => write!(fmt, "{}", "pair is unsorted"),
             Error::CustomError(s) => write!(fmt, "{}", s),
             Error::ParseError(e) => write!(fmt, "{}", e),
+            Error::EmptyStr => write!(fmt, "{}", "empty string"),
         }
     }
 }
@@ -118,6 +155,7 @@ impl StdError for Error {
             Error::UnsortedError => "pair is unsorted",
             Error::CustomError(s) => s.as_ref(),
             Error::ParseError(e) => "parse error",
+            Error::EmptyStr => "empty string",
         }
     }
 
