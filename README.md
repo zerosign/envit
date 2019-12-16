@@ -1,6 +1,7 @@
 # envit
 
-serde (serializer &amp; deserializer) for environment, supports for tree &amp; array
+serde (serializer &amp; deserializer) for environment, supports for tree &amp; array.
+WARN: deserialze & serialize process from env are not free from allocations (not zero allocations).
 
 ## Supported formats (TODO)
 

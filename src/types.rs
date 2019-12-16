@@ -5,56 +5,69 @@
 
 use std::{
     cmp::{Ord, Ordering, PartialOrd},
-    collections::{binary_heap::Iter, BinaryHeap, HashMap, HashSet},
+    collections::{binary_heap::Iter, hash_map::DefaultHasher, BinaryHeap, HashMap},
+    hash::{Hash, Hasher},
     iter::FromIterator,
     str::pattern::Pattern,
 };
 
 // pub type Key<'b> = Vec<&'b str>;
-type RIndex = Vec<usize>;
-type ItemRef = (usize, Vec<usize>);
-
-enum Kind {
-    Object,
-    Literal,
-}
+type IndexRef = Vec<usize>;
 
 // (index of indices, index of tree)
-type Index = (usize, usize);
-
-pub struct TreeCursor<'a> {
-    state: Index,
-    inner: StringDict<'a>,
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct Index {
+    node: usize,
+    level: usize,
 }
 
-impl<'a> TreeCursor<'a> {
-    fn next(&mut self) -> Option<(Index, Kind)> {
-        let old_state = self.state;
-        match self.inner.indices.get(self.state.0) {
-            Some(leaf) => {
-                if self.state.1 == leaf.len() {
-                    // literal
-                    self.state.0 = self.state.0 + 1;
-                    Some((old_state, Kind::Literal))
-                } else {
-                    // object
-                    self.state.1 = self.state.1 + 1;
-                    Some((old_state, Kind::Object))
-                }
-            }
-            None => None,
+impl Default for Index {
+    #[inline]
+    fn default() -> Self {
+        Self { node: 0, level: 0 }
+    }
+}
+
+impl Index {
+    #[inline]
+    pub fn new() -> Self {
+        Self { node: 0, level: 0 }
+    }
+
+    #[inline]
+    pub fn up(&self) -> Self {
+        Self {
+            node: self.node,
+            level: self.level - 1,
         }
     }
 
-    fn fetch_value(&self, index: Index) -> Option<String> {
-        self.inner.fetch_value(index)
+    #[inline]
+    pub fn down(&self) -> Self {
+        Self {
+            node: self.node,
+            level: self.level + 1,
+        }
+    }
+
+    #[inline]
+    pub fn next(&self) -> Self {
+        Self {
+            node: self.node + 1,
+            level: 0,
+        }
     }
 }
 
+pub(crate) enum Kind {
+    Leaf,
+    Node,
+}
+
 #[derive(Debug)]
-pub struct StringDict<'a> {
+pub(crate) struct StringDict<'a> {
     reverse: Vec<&'a str>,
-    indices: Vec<RIndex>,
+    indices: Vec<IndexRef>,
     data: Vec<&'a str>,
 }
 
@@ -69,26 +82,51 @@ impl<'a> Default for StringDict<'a> {
     }
 }
 
-// impl IntoIterator for StringDict<'a> {
-//    fn into_iterator() -> TreeCursor()
-// }
+pub enum Cursor {
+    // no available cursor for next iterator
+    Unavailable,
+    // next cursor will be a Node (could be another parent Node or Leaf)
+    Node,
+    // next cursor will be a new node (parent)
+    Parent,
+}
 
 impl<'a> StringDict<'a> {
-    //  fn key_of(&self, index: Index) -> Option<Key<'_>> {
-    //     let key = index
-    //         .iter()
-    //         .filter_map(move |idx| self.reverse.get(*idx).map(Clone::clone))
-    //         .collect::<Key<'_>>();
-    //
-    //     if key.is_empty() {
-    //         None
-    //     } else {
-    //         Some(key)
-    //     }
-    // }
+    #[inline]
+    pub fn hash_parent(&self, idx: Index) -> Option<u64> {
+        self.indices.get(idx.node).map(|d| {
+            // memoize this?
+            let mut hasher = DefaultHasher::new();
+            // create hash for this stringdict
+            Hash::hash(&d.get(0..idx.level - 1), &mut hasher);
+            hasher.finish()
+        })
+    }
 
-    fn fetch_value(&self, index: Index) -> Option<String> {
-        self.data.get(index.0).map(move |s| String::from(*s))
+    #[inline]
+    pub fn is_available(&self, idx: Index) -> bool {
+        self.indices.get(idx.node).is_some()
+    }
+
+    #[inline]
+    pub fn fetch_index_kind(&self, index: Index) -> Option<Kind> {
+        match self.indices.get(index.node) {
+            Some(leaf) => {
+                if index.level == leaf.len() - 1 {
+                    Some(Kind::Leaf)
+                } else if index.level < leaf.len() - 1 && index.level >= 0 {
+                    Some(Kind::Node)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn fetch_value(&self, index: Index) -> Option<String> {
+        self.data.get(index.node).map(move |s| String::from(*s))
     }
 
     ///
@@ -126,7 +164,7 @@ impl<'a> StringDict<'a> {
 
         let mut idx = 0;
         for KeyValue { fields, value } in iter {
-            let mut indices: RIndex = RIndex::new();
+            let mut indices: IndexRef = IndexRef::new();
 
             for field in fields {
                 // when key found
@@ -241,7 +279,4 @@ CONFIG__APPLICATION__LOGGER__LEVEL=info"#;
 
     let dict = StringDict::from_pairs(heap.iter());
     println!("result: {:?}", dict);
-
-    let item = dict.fetch(vec![0, 1, 2]);
-    println!("item: {:?}", item);
 }

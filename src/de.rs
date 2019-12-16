@@ -1,6 +1,8 @@
 use std::{
     borrow::Cow,
-    collections::{binary_heap, BinaryHeap},
+    collections::{binary_heap, hash_map::DefaultHasher, BinaryHeap, HashSet},
+    default::Default,
+    hash::{Hash, Hasher},
     io,
     iter::FromIterator,
 };
@@ -11,32 +13,130 @@ use crate::{
         de::{self, Error as SerdeError},
         forward_to_deserialize_any,
     },
-    types::{StringDict, TreeCursor},
+    types::{Cursor, Index, Kind as DictKind, StringDict},
 };
 
-pub struct MapAccess<'a> {
-    idx: usize,
-    inner: TreeCursor<'a>,
+pub enum Kind {
+    Object,
+    Literal,
 }
 
-impl<'de> de::MapAccess<'de> for MapAccess<'de> {
-    type Error = Error;
-
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
-    where
-        K: de::DeserializeSeed<'de>,
-    {
-        // self.inner.indices[idx];
-        Err(Self::Error::EmptyStr)
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::DeserializeSeed<'de>,
-    {
-        Err(Self::Error::EmptyStr)
+impl From<DictKind> for Kind {
+    #[inline]
+    fn from(kind: DictKind) -> Self {
+        match kind {
+            DictKind::Leaf => Kind::Literal,
+            DictKind::Node => Kind::Object,
+        }
     }
 }
+
+enum State {
+    Available { inner: HashSet<u64>, idx: Index },
+    Done,
+}
+
+impl Default for State {
+    #[inline]
+    fn default() -> Self {
+        Self::Available {
+            inner: HashSet::default(),
+            idx: Index::default(),
+        }
+    }
+}
+
+pub struct Deserializer<'a> {
+    state: State,
+    inner: StringDict<'a>,
+}
+
+impl<'a> Deserializer<'a> {
+    #[inline]
+    pub fn new<'b>(dict: StringDict<'b>) -> Self
+    where
+        'b: 'a,
+    {
+        Self {
+            state: State::default(),
+            inner: dict,
+        }
+    }
+
+    // None means short circuit
+    fn next(&mut self) -> Option<(Index, Kind)> {
+        let state = &self.state;
+        let dict = &self.inner;
+
+        match state {
+            State::Available { inner, idx } => {
+                let old_idx = *idx;
+                // out of index are being handled directly in method `peek_kind`
+                // if there is no index peek_kind will returns None
+                // thus this method will actually returns None
+                self.peek_kind().and_then(|kind| match kind {
+                    Kind::Literal => {
+                        let new_idx = idx.next().clone();
+
+                        self.state = if dict.is_available(new_idx) {
+                            // hashed already exists
+
+                            State::Available {
+                                inner: inner.clone(),
+                                idx: new_idx,
+                            }
+                        } else {
+                            State::Done
+                        };
+
+                        Some((old_idx, Kind::Literal))
+                    }
+                    Kind::Object => {
+                        // don't need to check since if an object,
+                        // there should always be next
+                        self.state = State::Available {
+                            inner: inner.clone(),
+                            idx: idx.down(),
+                        };
+
+                        Some((old_idx, Kind::Object))
+                    }
+                })
+            }
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn peek_kind(&self) -> Option<Kind> {
+        match &self.state {
+            State::Available { inner: _inner, idx } => {
+                self.inner.fetch_index_kind(*idx).map(Kind::from)
+            }
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn fetch_value(&self, index: Index) -> Option<String> {
+        self.inner.fetch_value(index)
+    }
+}
+
+// impl<'de> de::Deserializer<'de> for Deserializer<'de> {
+//     type Error = Error;
+
+//     ///
+//     /// only able to deserialize literal value
+//     /// other than that give error to deserializer
+//     ///
+//     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+//     where
+//         V: de::Visitor<'de>,
+//     {
+//         Err(Self::Error::EmptyStr)
+//     }
+// }
 
 #[derive(Debug, PartialEq)]
 enum Sign {
@@ -45,7 +145,7 @@ enum Sign {
 }
 
 #[derive(Debug, PartialEq)]
-enum State {
+enum LiteralState {
     String,
     Int(Sign),
     Double,
@@ -83,41 +183,41 @@ impl<'de> LiteralDeserializer<'de> {
         match self.inner.chars().fold(None, |state, ch| {
             match state {
                 // int(s) -> double | string
-                Some(State::Int(s)) => {
+                Some(LiteralState::Int(s)) => {
                     if char::is_digit(ch, 10) {
-                        Some(State::Int(s))
+                        Some(LiteralState::Int(s))
                     } else if ch == '.' {
-                        Some(State::Double)
+                        Some(LiteralState::Double)
                     } else {
-                        Some(State::String)
+                        Some(LiteralState::String)
                     }
                 }
                 // sdouble -> sdouble | string
-                Some(State::Double) => {
+                Some(LiteralState::Double) => {
                     if char::is_digit(ch, 10) {
-                        Some(State::Double)
+                        Some(LiteralState::Double)
                     } else {
-                        Some(State::String)
+                        Some(LiteralState::String)
                     }
                 }
                 // string -> string | bool .
-                Some(State::String) => Some(State::String),
+                Some(LiteralState::String) => Some(LiteralState::String),
                 // None
                 _ => {
                     if char::is_digit(ch, 10) {
-                        Some(State::Int(Sign::Unsigned))
+                        Some(LiteralState::Int(Sign::Unsigned))
                     } else if ch == '-' {
-                        Some(State::Int(Sign::Signed))
+                        Some(LiteralState::Int(Sign::Signed))
                     } else {
-                        Some(State::String)
+                        Some(LiteralState::String)
                     }
                 }
             }
         }) {
-            Some(State::Int(Sign::Unsigned)) => self.deserialize_u64(visitor),
-            Some(State::Int(Sign::Signed)) => self.deserialize_i64(visitor),
-            Some(State::Double) => self.deserialize_f64(visitor),
-            Some(State::String) => self.deserialize_str(visitor),
+            Some(LiteralState::Int(Sign::Unsigned)) => self.deserialize_u64(visitor),
+            Some(LiteralState::Int(Sign::Signed)) => self.deserialize_i64(visitor),
+            Some(LiteralState::Double) => self.deserialize_f64(visitor),
+            Some(LiteralState::String) => self.deserialize_str(visitor),
             _ => Err(LiteralError::EmptyStr),
         }
     }
