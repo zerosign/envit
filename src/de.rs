@@ -31,6 +31,7 @@ impl From<DictKind> for Kind {
     }
 }
 
+#[derive(Debug, Clone)]
 enum State {
     Available { inner: HashSet<u64>, idx: Index },
     Done,
@@ -65,12 +66,12 @@ impl<'a> Deserializer<'a> {
 
     // None means short circuit
     fn next(&mut self) -> Option<(Index, Kind)> {
-        let state = &self.state;
-        let dict = &self.inner;
+        let state = self.state.clone();
+        let dict = self.inner.clone();
 
         match state {
             State::Available { inner, idx } => {
-                let old_idx = *idx;
+                let old_idx = idx;
                 // out of index are being handled directly in method `peek_kind`
                 // if there is no index peek_kind will returns None
                 // thus this method will actually returns None

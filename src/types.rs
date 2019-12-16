@@ -16,7 +16,7 @@ type IndexRef = Vec<usize>;
 
 // (index of indices, index of tree)
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct Index {
+pub struct Index {
     node: usize,
     level: usize,
 }
@@ -59,13 +59,13 @@ impl Index {
     }
 }
 
-pub(crate) enum Kind {
+pub enum Kind {
     Leaf,
     Node,
 }
 
-#[derive(Debug)]
-pub(crate) struct StringDict<'a> {
+#[derive(Debug, Clone)]
+pub struct StringDict<'a> {
     reverse: Vec<&'a str>,
     indices: Vec<IndexRef>,
     data: Vec<&'a str>,
