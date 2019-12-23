@@ -1,0 +1,13 @@
+* TODO implement Serializer
+** DONE implement serialize_some in Serializer
+** DONE implement serialize_unit in Serializer
+** DONE implement serialize_unit_struct in Serializer
+** DONE implement serialize_unit_variant in Serializer
+** DONE implement serialize_newtype_struct in Serializer
+** DONE implement serialize_newtype_variant in Serializer
+** DONE implement serialize_tuple_struct in Serializer
+** TODO implement serialize_tuple_variant in Serializer
+** TODO implement serialize_map in Serializer
+** TODO implement serialize_struct in Serialize
+** TODO implement serialize_struct_variant in Serializer
+** TODO need to check whether we need to use T as sum type for checking whether we are in leaf or branch

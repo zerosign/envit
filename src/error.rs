@@ -11,8 +11,8 @@ pub enum SerializeError<'a> {
 
 impl<'a> From<io::Error> for SerializeError<'a> {
     #[inline]
-    fn from(self) -> Self {
-        Self::IoError(self)
+    fn from(e: io::Error) -> Self {
+        Self::IoError(e)
     }
 }
 
@@ -45,7 +45,7 @@ impl<'a> SError for SerializeError<'a> {
     where
         T: fmt::Display,
     {
-        Self::CustomError(format!("custom error: {}", msg))
+        Self::CustomError(&format!("custom error: {}", msg))
     }
 }
 
@@ -80,6 +80,6 @@ impl<'a> SError for DeserializeError<'a> {
     where
         T: fmt::Display,
     {
-        Self::CustomError(format!("custom error: {}", msg))
+        Self::CustomError(&format!("custom error: {}", msg))
     }
 }
