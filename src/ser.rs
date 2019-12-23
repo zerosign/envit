@@ -8,14 +8,9 @@
 use crate::{
     error::SerializeError,
     serde::{ser, Serialize},
+    types::{ArrayFormatter, FieldFormatter, StringFormatter},
 };
 use std::{io, marker::PhantomData};
-
-pub trait StringFormatter {
-    fn format<W>(f: &mut W, v: &str) -> io::Result<()>
-    where
-        W: io::Write;
-}
 
 pub struct DefaultStringFormatter;
 
@@ -26,22 +21,8 @@ impl StringFormatter for DefaultStringFormatter {
         W: io::Write,
     {
         // // TODO: do we need to ensure string quotation validity ?
-        write!(&mut f, "\"{}\"", v)
+        write!(f, "\"{}\"", v)
     }
-}
-
-pub trait ArrayFormatter {
-    fn begin<W>(f: &mut W) -> io::Result<()>
-    where
-        W: io::Write;
-
-    fn separate<W>(f: &mut W) -> io::Result<()>
-    where
-        W: io::Write;
-
-    fn end<W>(f: &mut W) -> io::Result<()>
-    where
-        W: io::Write;
 }
 
 pub struct DefaultArrayFormatter;
@@ -52,7 +33,7 @@ impl ArrayFormatter for DefaultArrayFormatter {
     where
         W: io::Write,
     {
-        write!(&mut f, "{}", "[")
+        write!(f, "{}", "[")
     }
 
     #[inline]
@@ -60,28 +41,15 @@ impl ArrayFormatter for DefaultArrayFormatter {
     where
         W: io::Write,
     {
-        write!(&mut f, "{}", ',')
+        write!(f, "{}", ',')
     }
 
     fn end<W>(f: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
-        write!(&mut f, "{}", "]")
+        write!(f, "{}", "]")
     }
-}
-
-pub trait FieldFormatter {
-    fn pair_sep<W>(f: &mut W) -> io::Result<()>
-    where
-        W: io::Write;
-    fn field_sep<W>(f: &mut W) -> io::Result<()>
-    where
-        W: io::Write;
-
-    fn value_sep<W>(f: &mut W) -> io::Result<()>
-    where
-        W: io::Write;
 }
 
 pub struct DefaultFieldFormatter;
@@ -92,7 +60,7 @@ impl FieldFormatter for DefaultFieldFormatter {
     where
         W: io::Write,
     {
-        write!(&mut f, "{}", "=")
+        write!(f, "{}", "=")
     }
 
     #[inline]
@@ -100,7 +68,7 @@ impl FieldFormatter for DefaultFieldFormatter {
     where
         W: io::Write,
     {
-        write!(&mut f, "{}", "__")
+        write!(f, "{}", "__")
     }
 
     #[inline]
@@ -108,7 +76,7 @@ impl FieldFormatter for DefaultFieldFormatter {
     where
         W: io::Write,
     {
-        write!(&mut f, "{}", "\n")
+        write!(f, "{}", "\n")
     }
 }
 
@@ -119,7 +87,7 @@ where
     F: FieldFormatter + Sized,
     S: StringFormatter + Sized,
 {
-    output: &'a W,
+    output: &'a mut W,
     _array: PhantomData<A>,
     _field: PhantomData<F>,
     _string: PhantomData<S>,
@@ -147,43 +115,43 @@ where
 
     type Error = SerializeError<'a>;
 
-    type SerializeSeq = SeqFlow<'a, A, W, F, S>;
-    type SerializeTuple = SeqFlow<'a, A, W, F, S>;
-    type SerializeTupleStruct = SeqFlow<'a, A, W, F, S>;
-    type SerializeTupleVariant = SeqFlow<'a, A, W, F, S>;
-    type SerializeMap = SeqFlow<'a, A, W, F, S>;
-    type SerializeStruct = SeqFlow<'a, A, W, F, S>;
-    type SerializeStructVariant = SeqFlow<'a, A, W, F, S>;
+    type SerializeSeq = &'a mut SeqFlow<'a, A, W, F, S>;
+    type SerializeTuple = &'a mut SeqFlow<'a, A, W, F, S>;
+    type SerializeTupleStruct = &'a mut SeqFlow<'a, A, W, F, S>;
+    type SerializeTupleVariant = &'a mut SeqFlow<'a, A, W, F, S>;
+    type SerializeMap = &'a mut SeqFlow<'a, A, W, F, S>;
+    type SerializeStruct = &'a mut SeqFlow<'a, A, W, F, S>;
+    type SerializeStructVariant = &'a mut SeqFlow<'a, A, W, F, S>;
 
     #[inline]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        write!(&mut *self.output, "{}", v.to_string()).map_err(Self::Error::from)
+        write!(self.output, "{}", v.to_string()).map_err(Self::Error::from)
     }
 
     #[inline]
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        write!(&mut *self.output, "{}", v.to_string()).map_err(Self::Error::from)
+        write!(self.output, "{}", v.to_string()).map_err(Self::Error::from)
     }
 
     #[inline]
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        write!(&mut *self.output, "{}", v.to_string()).map_err(Self::Error::from)
+        write!(self.output, "{}", v.to_string()).map_err(Self::Error::from)
     }
 
     #[inline]
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        write!(&mut *self.output, "{}", &v.to_string()).map_err(Self::Error::from)
+        write!(self.output, "{}", &v.to_string()).map_err(Self::Error::from)
     }
 
     #[inline]
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        S::format(&mut *self.output, v).map_err(Self::Error::from)
+        S::format(self.output, v).map_err(Self::Error::from)
     }
 
     #[inline]
-    fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        A::begin(&mut *self.output)?;
-        Ok(SeqFlow::Initial(&mut self))
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        A::begin(self.output)?;
+        Ok(&mut SeqFlow::Initial(self))
     }
 
     #[inline]
@@ -307,13 +275,51 @@ where
         T: ?Sized + Serialize,
     {
         variant.serialize(&mut *self)?;
-        F::pair_sep(&mut *self.output)?;
+        F::pair_sep(self.output)?;
         value.serialize(&mut *self)?;
-        F::value_sep(&mut *self.output).map_err(Self::Error::from)
+        F::value_sep(self.output).map_err(Self::Error::from)
+    }
+
+    #[inline]
+    fn serialize_tuple_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeTupleVariant, Self::Error> {
+        variant.serialize(&mut *self)?;
+        Ok(&mut SeqFlow::Initial(&mut self))
+    }
+
+    #[inline]
+    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        Ok(&mut SeqFlow::Initial(&mut self))
+    }
+
+    #[inline]
+    fn serialize_struct(
+        self,
+        _name: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeStruct, Self::Error> {
+        self.serialize_map(Some(len))
+    }
+
+    #[inline]
+    fn serialize_struct_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeStructVariant, Self::Error> {
+        variant.serialize(&mut *self)?;
+        Ok(&mut SeqFlow::Initial(&mut self))
     }
 }
 
-impl<'a, A, W, F, S> ser::SerializeSeq for SeqFlow<'a, A, W, F, S>
+impl<'a, A, W, F, S> ser::SerializeSeq for &'a mut SeqFlow<'a, A, W, F, S>
 where
     W: io::Write + Sized,
     A: ArrayFormatter + Sized,
@@ -327,9 +333,9 @@ where
     where
         T: ?Sized + Serialize,
     {
-        match self {
-            Self::Initial(mut v) => value.serialize(&mut *v),
-            Self::Next(mut v) => {
+        match *self {
+            SeqFlow::Initial(mut v) => value.serialize(&mut *v),
+            SeqFlow::Next(mut v) => {
                 A::separate(&mut *v.output)?;
                 value.serialize(&mut *v)
             }
@@ -338,14 +344,14 @@ where
 
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        match self {
-            Self::Initial(v) => A::end(&mut *v.output).map_err(Self::Error::from),
-            Self::Next(v) => A::end(&mut *v.output).map_err(Self::Error::from),
+        match *self {
+            SeqFlow::Initial(v) => A::end(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Next(v) => A::end(&mut *v.output).map_err(Self::Error::from),
         }
     }
 }
 
-impl<'a, A, W, F, S> ser::SerializeTuple for SeqFlow<'a, A, W, F, S>
+impl<'a, A, W, F, S> ser::SerializeTuple for &'a mut SeqFlow<'a, A, W, F, S>
 where
     W: io::Write + Sized,
     A: ArrayFormatter + Sized,
@@ -360,9 +366,9 @@ where
     where
         T: ?Sized + Serialize,
     {
-        match self {
-            Self::Initial(mut v) => value.serialize(&mut *v),
-            Self::Next(mut v) => {
+        match *self {
+            SeqFlow::Initial(mut v) => value.serialize(&mut *v),
+            SeqFlow::Next(mut v) => {
                 A::separate(&mut *v.output)?;
                 value.serialize(&mut *v)
             }
@@ -371,46 +377,14 @@ where
 
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        match self {
-            Self::Initial(v) => A::end(&mut *v.output).map_err(Self::Error::from),
-            Self::Next(v) => A::end(&mut *v.output).map_err(Self::Error::from),
+        match *self {
+            SeqFlow::Initial(v) => A::end(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Next(v) => A::end(&mut *v.output).map_err(Self::Error::from),
         }
     }
 }
 
-impl<'a, A, W, F, S> ser::SerializeTupleStruct for SeqFlow<'a, A, W, F, S>
-where
-    W: io::Write + Sized,
-    A: ArrayFormatter + Sized,
-    F: FieldFormatter + Sized,
-    S: StringFormatter + Sized,
-{
-    type Ok = ();
-    type Error = SerializeError<'a>;
-
-    fn serialize_field<T>(&mut self, value: &T) -> Result<Self::Ok, Self::Error>
-    where
-        T: ?Sized + Serialize,
-    {
-        match self {
-            Self::Initial(mut v) => value.serialize(&mut *v),
-            Self::Next(mut v) => {
-                A::separate(&mut *v.output)?;
-                value.serialize(&mut *v)
-            }
-        }
-    }
-
-    #[inline]
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        match self {
-            Self::Initial(v) => A::end(&mut *v.output).map_err(Self::Error::from),
-            Self::Next(v) => A::end(&mut *v.output).map_err(Self::Error::from),
-        }
-    }
-}
-
-impl<'a, A, W, F, S> ser::SerializeTupleVariant for SeqFlow<'a, A, W, F, S>
+impl<'a, A, W, F, S> ser::SerializeTupleStruct for &'a mut SeqFlow<'a, A, W, F, S>
 where
     W: io::Write + Sized,
     A: ArrayFormatter + Sized,
@@ -426,8 +400,41 @@ where
         T: ?Sized + Serialize,
     {
         match self {
-            Self::Initial(mut v) => value.serialize(&mut *v),
-            Self::Next(mut v) => {
+            SeqFlow::Initial(&mut v) => value.serialize(&mut v),
+            SeqFlow::Next(&mut v) => {
+                A::separate(&mut *v.output)?;
+                value.serialize(&mut v)
+            }
+        }
+    }
+
+    #[inline]
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        match self {
+            SeqFlow::Initial(v) => A::end(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Next(v) => A::end(&mut *v.output).map_err(Self::Error::from),
+        }
+    }
+}
+
+impl<'a, A, W, F, S> ser::SerializeTupleVariant for &'a mut SeqFlow<'a, A, W, F, S>
+where
+    W: io::Write + Sized,
+    A: ArrayFormatter + Sized,
+    F: FieldFormatter + Sized,
+    S: StringFormatter + Sized,
+{
+    type Ok = ();
+    type Error = SerializeError<'a>;
+
+    #[inline]
+    fn serialize_field<T>(&mut self, value: &T) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        match self {
+            SeqFlow::Initial(mut v) => value.serialize(&mut *v),
+            SeqFlow::Next(mut v) => {
                 A::separate(&mut *v.output)?;
                 value.serialize(&mut *v)
             }
@@ -436,13 +443,13 @@ where
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
         match self {
-            Self::Initial(v) => A::end(&mut *v.output).map_err(Self::Error::from),
-            Self::Next(v) => A::end(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Initial(v) => A::end(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Next(v) => A::end(&mut *v.output).map_err(Self::Error::from),
         }
     }
 }
 
-impl<'a, A, W, F, S> ser::SerializeMap for SeqFlow<'a, A, W, F, S>
+impl<'a, A, W, F, S> ser::SerializeMap for &'a mut SeqFlow<'a, A, W, F, S>
 where
     W: io::Write + Sized,
     A: ArrayFormatter + Sized,
@@ -457,8 +464,8 @@ where
         T: ?Sized + Serialize,
     {
         match self {
-            Self::Initial(mut v) => key.serialize(&mut *v),
-            Self::Next(mut v) => {
+            SeqFlow::Initial(mut v) => key.serialize(&mut *v),
+            SeqFlow::Next(mut v) => {
                 F::field_sep(&mut *v.output)?;
                 key.serialize(&mut *v)
             }
@@ -470,8 +477,8 @@ where
         T: ?Sized + Serialize,
     {
         match self {
-            Self::Initial(mut v) => value.serialize(&mut *v),
-            Self::Next(mut v) => {
+            SeqFlow::Initial(mut v) => value.serialize(&mut *v),
+            SeqFlow::Next(mut v) => {
                 F::pair_sep(&mut *v.output)?;
                 value.serialize(&mut *v)
             }
@@ -481,13 +488,13 @@ where
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
         match self {
-            Self::Initial(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
-            Self::Next(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Initial(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Next(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
         }
     }
 }
 
-impl<'a, A, W, F, S> ser::SerializeStruct for SeqFlow<'a, A, W, F, S>
+impl<'a, A, W, F, S> ser::SerializeStruct for &'a mut SeqFlow<'a, A, W, F, S>
 where
     W: io::Write + Sized,
     A: ArrayFormatter + Sized,
@@ -502,12 +509,12 @@ where
         T: ?Sized + Serialize,
     {
         match self {
-            Self::Initial(mut v) => {
+            SeqFlow::Initial(mut v) => {
                 key.serialize(&mut *v)?;
                 F::pair_sep(&mut *v.output)?;
                 value.serialize(&mut *v)
             }
-            Self::Next(mut v) => {
+            SeqFlow::Next(mut v) => {
                 F::field_sep(&mut *v.output)?;
                 key.serialize(&mut *v)?;
                 F::pair_sep(&mut *v.output)?;
@@ -519,13 +526,13 @@ where
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
         match self {
-            Self::Initial(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
-            Self::Next(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Initial(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Next(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
         }
     }
 }
 
-impl<'a, A, W, F, S> ser::SerializeStructVariant for SeqFlow<'a, A, W, F, S>
+impl<'a, A, W, F, S> ser::SerializeStructVariant for &'a mut SeqFlow<'a, A, W, F, S>
 where
     W: io::Write + Sized,
     A: ArrayFormatter + Sized,
@@ -540,12 +547,12 @@ where
         T: ?Sized + Serialize,
     {
         match self {
-            Self::Initial(mut v) => {
+            SeqFlow::Initial(mut v) => {
                 key.serialize(&mut *v)?;
                 F::pair_sep(&mut *v.output)?;
                 value.serialize(&mut *v)
             }
-            Self::Next(mut v) => {
+            SeqFlow::Next(mut v) => {
                 F::field_sep(&mut *v.output)?;
                 key.serialize(&mut *v)?;
                 F::pair_sep(&mut *v.output)?;
@@ -557,8 +564,8 @@ where
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
         match self {
-            Self::Initial(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
-            Self::Next(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Initial(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
+            SeqFlow::Next(mut v) => F::value_sep(&mut *v.output).map_err(Self::Error::from),
         }
     }
 }
