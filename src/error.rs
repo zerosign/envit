@@ -7,6 +7,7 @@ use std::{error::Error as StdError, fmt, io};
 pub enum SerializeError<'a> {
     CustomError(&'a str),
     IoError(io::Error),
+    StateError,
 }
 
 impl<'a> From<io::Error> for SerializeError<'a> {
@@ -21,6 +22,7 @@ impl<'a> fmt::Debug for SerializeError<'a> {
         match self {
             Self::CustomError(v) => write!(f, "custom error: {:?}", v),
             Self::IoError(e) => write!(f, "{:?}", e),
+            Self::StateError => write!(f, "{}", "StateError"),
         }
     }
 }
@@ -30,6 +32,7 @@ impl<'a> fmt::Display for SerializeError<'a> {
         match self {
             Self::CustomError(v) => write!(f, "custom error: {}", v),
             Self::IoError(e) => write!(f, "{}", e),
+            Self::StateError => write!(f, "{}", "StateError"),
         }
     }
 }

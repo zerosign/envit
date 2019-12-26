@@ -6,10 +6,19 @@
 ** DONE implement serialize_newtype_struct in Serializer
 ** DONE implement serialize_newtype_variant in Serializer
 ** DONE implement serialize_tuple_struct in Serializer
-** TODO fix reference types of Serializer and it's trait impls
+** DONE fix reference types of Serializer and it's trait impls
 ** DONE extract StringFormatter, ArrayFormatter, FieldFormatter trait into `crate::types`
-** TODO implement serialize_tuple_variant in Serializer
-** TODO implement serialize_map in Serializer
-** TODO implement serialize_struct in Serialize
-** TODO implement serialize_struct_variant in Serializer
-** TODO need to check whether we need to use T as sum type for checking whether we are in leaf or branch
+** DONE implement serialize_tuple_variant in Serializer
+** DONE implement serialize_map in Serializer
+** DONE implement serialize_struct in Serialize
+** DONE implement serialize_struct_variant in Serializer
+** DONE need to check whether we need to use T as sum type for checking whether we are in leaf or branch
+** TODO Init the logic for serializing the parent nodes
+*** TODO: Parent node traversal
+    :DESCRIPTION: push all the parent nodes when
+    traversing (serializing), and pop it when changing the parents.
+    :END:
+*** TODO: Node Leaf detection
+    :DESCRIPTION:
+    finish the logic to check whether we want to print value node or branch since serializer/serialize could call `serialize_str` (or maybe more methods) outside when serializing the real value
+    :END:

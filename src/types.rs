@@ -14,7 +14,7 @@ pub trait StringFormatter {
     ///
     fn format<W>(f: &mut W, v: &str) -> io::Result<()>
     where
-        W: io::Write;
+        W: io::Write + ?Sized;
 }
 
 /// Trait that give a way to format
@@ -28,19 +28,19 @@ pub trait ArrayFormatter {
     ///
     fn begin<W>(f: &mut W) -> io::Result<()>
     where
-        W: io::Write;
+        W: io::Write + ?Sized;
 
     /// Write token that separates each element in Array like structure.
     ///
     fn separate<W>(f: &mut W) -> io::Result<()>
     where
-        W: io::Write;
+        W: io::Write + ?Sized;
 
     /// Write token after last element array reached.
     ///
     fn end<W>(f: &mut W) -> io::Result<()>
     where
-        W: io::Write;
+        W: io::Write + ?Sized;
 }
 
 /// Formatter for writing fields in pair.
@@ -51,14 +51,14 @@ pub trait FieldFormatter {
     ///
     fn pair_sep<W>(f: &mut W) -> io::Result<()>
     where
-        W: io::Write;
+        W: io::Write + ?Sized;
 
     /// Separator that separate between each fields in key.
     ///
     ///
     fn field_sep<W>(f: &mut W) -> io::Result<()>
     where
-        W: io::Write;
+        W: io::Write + ?Sized;
 
     /// Separator that separate between each pair
     /// (or after value is written)
@@ -66,5 +66,5 @@ pub trait FieldFormatter {
     ///
     fn value_sep<W>(f: &mut W) -> io::Result<()>
     where
-        W: io::Write;
+        W: io::Write + ?Sized;
 }
