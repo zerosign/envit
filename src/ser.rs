@@ -1,15 +1,25 @@
 ///!
-///! Notes:
-///!
 ///! [`StringFormatter`] & [`ArrayFormatter`] & [`FieldFormatter`] are
 ///! static trait, means you don't need to have a real struct implementation
 ///! since most of the methods doesn't need to have instance of the struct.
+///!
+///! When serializing a data structure into envs, you need to realize that :
+///! - env value could be another field, thus we need to know whether
+///!   current node is leaf/value node
+///! - any `Serializer::serialize_*` (value serialization fn) can be called in any cases,
+///!   not only when serializing a value. It could be called when serializing key in env pair.
+///! - Serializing sibling node requires us to keep track the parent nodes (allocations).
+///!
+///! Since in `serde`, all serialization also derive from Serializer function including
+///! field/key serializer or value serializer inside variant. So, we need to create
+///! flag mechanism to check whether current context is come from `MapFlow` or `SeqFlow`.
 ///!
 use crate::{
     error::SerializeError,
     serde::{ser, Serialize},
     types::{ArrayFormatter, FieldFormatter, StringFormatter},
 };
+
 use std::{io, marker::PhantomData};
 
 pub struct DefaultStringFormatter;
@@ -25,6 +35,13 @@ impl StringFormatter for DefaultStringFormatter {
     }
 }
 
+/// Type that implement `ArrayFormatter`.
+///
+/// it uses :
+/// - '[' for `ArrayFormatter::begin`
+/// - ',' for `ArrayFormatter::separate`
+/// - ']' for `ArrayFormatter::end`
+///
 pub struct DefaultArrayFormatter;
 
 impl ArrayFormatter for DefaultArrayFormatter {
@@ -80,6 +97,13 @@ impl FieldFormatter for DefaultFieldFormatter {
     }
 }
 
+/// Type that abstract how data structure being serialized.
+///
+/// It implements `ser::Serializer`.
+///
+/// Any calls to serialize_* after calling non_value() and set_value()
+/// will be not print a pair_sep.
+///
 pub struct Serializer<'a, A, W, F, S>
 where
     W: io::Write + Sized,
@@ -87,6 +111,11 @@ where
     F: FieldFormatter + Sized,
     S: StringFormatter + Sized,
 {
+    // INFO: we need to use custom Writer in here since
+    //       we need to be able to replay parents fields serialization
+    //       for serialize the next sibling of current node.
+    //       Thus, checking current node is leaf/value or not, is important.
+    //
     output: W,
     flag_value: bool,
     // TODO: I need to store fields traversal history (as a Stack) in here
@@ -97,6 +126,8 @@ where
     _string: PhantomData<S>,
 }
 
+
+
 impl<'a, A, W, F, S> Serializer<'a, A, W, F, S>
 where
     W: io::Write + Sized,
@@ -104,6 +135,24 @@ where
     F: FieldFormatter + Sized,
     S: StringFormatter + Sized,
 {
+    #[inline]
+    pub(crate) fn set_value(&mut self) {
+        self.flag_value = true;
+    }
+
+    #[inline]
+    pub(crate) fn non_value(&mut self) {
+        self.flag_value = false;
+    }
+
+    #[inline]
+    pub(crate) fn render_pair_sep(&mut self) {
+        if self.is_value() {
+            F::pair_sep(&mut self.output);
+            self.non_value();
+        }
+    }
+
     /// Guards to check whether current node is value or not.
     ///
     /// This useful when traversing using SeqFlow or MapFlow,
@@ -114,30 +163,23 @@ where
     /// render the pair_sep.
     ///
     #[inline]
-    pub fn toggle_value(&mut self) {
-        self.flag_value = !self.flag_value;
-    }
-
-    #[inline]
-    pub fn render_pair_sep(&mut self) {
-        if self.is_value() {
-            F::pair_sep(&mut self.output);
-            self.toggle_value();
-        }
-    }
-
-    #[inline]
-    pub fn is_value(&self) -> bool {
+    pub(crate) fn is_value(&self) -> bool {
         self.flag_value
     }
 }
 
+///
+/// Derived State to be used in figuring out state inside
+/// the loop of Serialize* when iterating over its element.
+///
 #[derive(Clone, Copy)]
-pub enum State {
+pub(crate) enum State {
     Initial,
     Next,
 }
 
+/// Flow that only do 1 field sequential iteration.
+///
 pub struct SeqFlow<'a, A, W, F, S>
 where
     W: io::Write + Sized,
@@ -149,6 +191,8 @@ where
     state: State,
 }
 
+/// Flow that supports key & value sequential iteration.
+///
 pub struct MapFlow<'a, A, W, F, S>
 where
     W: io::Write + Sized,
@@ -213,7 +257,7 @@ where
 {
     type Ok = ();
 
-    type Error = SerializeError<'a>;
+    type Error = SerializeError;
 
     type SerializeSeq = SeqFlow<'a, A, W, F, S>;
     type SerializeTuple = SeqFlow<'a, A, W, F, S>;
@@ -382,10 +426,11 @@ where
     where
         T: ?Sized + Serialize,
     {
-        // TODO: need to by pass the toggle value in here
-        self.toggle_value();
+        // INFO: inside the closure non_value and set_value,
+        //       all calls to serialize_* will not print separator.
+        self.non_value();
         self.serialize_str(variant)?;
-        self.toggle_value();
+        self.set_value();
         // variant.serialize(&mut *self)
         value.serialize(self)?;
         F::value_sep(&mut self.output).map_err(Self::Error::from)
@@ -444,12 +489,13 @@ where
     S: StringFormatter + Sized,
 {
     type Ok = ();
-    type Error = SerializeError<'a>;
+    type Error = SerializeError;
 
     fn serialize_element<T>(&mut self, value: &T) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + Serialize,
     {
+
         match self.state {
             State::Initial => {
                 // since we only change the state,
@@ -470,6 +516,8 @@ where
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
         match self.state {
+            // `self.state` shouldn't never get a `State::Initial` in here
+            // since the state always gonna be altered in `Self::serialize_element` function call
             State::Initial => Err(Self::Error::StateError),
             _ => A::end(&mut self.ser.output).map_err(Self::Error::from),
         }
@@ -484,7 +532,7 @@ where
     S: StringFormatter + Sized,
 {
     type Ok = ();
-    type Error = SerializeError<'a>;
+    type Error = SerializeError;
 
     #[inline]
     fn serialize_element<T>(&mut self, value: &T) -> Result<Self::Ok, Self::Error>
@@ -508,7 +556,7 @@ where
     S: StringFormatter + Sized,
 {
     type Ok = ();
-    type Error = SerializeError<'a>;
+    type Error = SerializeError;
 
     #[inline]
     fn serialize_field<T>(&mut self, value: &T) -> Result<Self::Ok, Self::Error>
@@ -532,7 +580,7 @@ where
     S: StringFormatter + Sized,
 {
     type Ok = ();
-    type Error = SerializeError<'a>;
+    type Error = SerializeError;
 
     #[inline]
     fn serialize_field<T>(&mut self, value: &T) -> Result<Self::Ok, Self::Error>
@@ -555,7 +603,7 @@ where
     S: StringFormatter + Sized,
 {
     type Ok = ();
-    type Error = SerializeError<'a>;
+    type Error = SerializeError;
 
     fn serialize_key<T>(&mut self, key: &T) -> Result<Self::Ok, Self::Error>
     where
@@ -608,12 +656,13 @@ where
     S: StringFormatter + Sized,
 {
     type Ok = ();
-    type Error = SerializeError<'a>;
+    type Error = SerializeError;
 
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + Serialize,
     {
+
         match self.state {
             State::Initial => {
                 // this also okay to be reordered since
@@ -645,7 +694,7 @@ where
     S: StringFormatter + Sized,
 {
     type Ok = ();
-    type Error = SerializeError<'a>;
+    type Error = SerializeError;
 
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<Self::Ok, Self::Error>
     where

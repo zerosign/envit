@@ -68,3 +68,6 @@ pub trait FieldFormatter {
     where
         W: io::Write + ?Sized;
 }
+
+
+pub trait Writer<W, A, F, S> where W: io::Write {}

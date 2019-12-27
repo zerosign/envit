@@ -81,7 +81,6 @@ impl Ord for EnvPair {
 ///
 /// hole: [0, 1], parent: [], leaf: 2
 /// hole: [], parent: [0, 1], leaf: 3
-/// hole: [4], parent: [0, 1], leaf: 5
 /// hole: [], parent: [0, 1, 4], leaf: 6
 /// hole: [7], parent: [0, 1], leaf: 8
 /// hole: [], parent: [0, 1, 7], leaf: 9
@@ -141,6 +140,7 @@ impl<'a> Envs<'a> {
 
         let mut inner = Self::default();
         let mut reverse_idx = HashMap::<String, usize>::new();
+
         //
         // env pair fields will always direct to a leaf node in the branch/tree
         // so, the only possible parent node would be fields[0-k-1] or
@@ -157,8 +157,6 @@ impl<'a> Envs<'a> {
         //
         // example:
         // [[0, 1, 2], [0, 1, 3], [0, 1, 4, 5], [0, 1, 4, 6], [0, 1, 7, 8], [0, 1, 7, 9], [0, 1, 7, 10], [0, 11, 12, 13]]
-        //
-        //
         //
         let mut parents = HashSet::<Vec<usize>>::new();
 

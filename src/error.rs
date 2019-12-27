@@ -1,23 +1,26 @@
 use crate::serde::{
-    de::{self, Error as DError},
-    ser::{self, Error as SError},
+    ser::{Error as SError},
 };
 use std::{error::Error as StdError, fmt, io};
 
-pub enum SerializeError<'a> {
-    CustomError(&'a str),
+pub enum SerializeError {
+    /// dedicated for custom error in user space
+    CustomError(String),
+    /// dedicated for std io::Error wrapper
     IoError(io::Error),
+    /// dedicated for unknown state error when doing serializing
+    /// in either both `crate::ser::MapFlow` or `crate::ser::SeqFlow`
     StateError,
 }
 
-impl<'a> From<io::Error> for SerializeError<'a> {
+impl From<io::Error> for SerializeError {
     #[inline]
     fn from(e: io::Error) -> Self {
         Self::IoError(e)
     }
 }
 
-impl<'a> fmt::Debug for SerializeError<'a> {
+impl fmt::Debug for SerializeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CustomError(v) => write!(f, "custom error: {:?}", v),
@@ -27,7 +30,7 @@ impl<'a> fmt::Debug for SerializeError<'a> {
     }
 }
 
-impl<'a> fmt::Display for SerializeError<'a> {
+impl fmt::Display for SerializeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CustomError(v) => write!(f, "custom error: {}", v),
@@ -37,26 +40,26 @@ impl<'a> fmt::Display for SerializeError<'a> {
     }
 }
 
-impl<'a> StdError for SerializeError<'a> {
+impl StdError for SerializeError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         None
     }
 }
 
-impl<'a> SError for SerializeError<'a> {
+impl SError for SerializeError {
     fn custom<T>(msg: T) -> Self
     where
         T: fmt::Display,
     {
-        Self::CustomError(&format!("custom error: {}", msg))
+        Self::CustomError(format!("custom error: {}", msg))
     }
 }
 
-pub enum DeserializeError<'a> {
-    CustomError(&'a str),
+pub enum DeserializeError {
+    CustomError(String),
 }
 
-impl<'a> fmt::Debug for DeserializeError<'a> {
+impl fmt::Debug for DeserializeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CustomError(v) => write!(f, "custom error: {:?}", v),
@@ -64,7 +67,7 @@ impl<'a> fmt::Debug for DeserializeError<'a> {
     }
 }
 
-impl<'a> fmt::Display for DeserializeError<'a> {
+impl fmt::Display for DeserializeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CustomError(v) => write!(f, "custom error: {}", v),
@@ -72,17 +75,17 @@ impl<'a> fmt::Display for DeserializeError<'a> {
     }
 }
 
-impl<'a> StdError for DeserializeError<'a> {
+impl StdError for DeserializeError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         None
     }
 }
 
-impl<'a> SError for DeserializeError<'a> {
+impl SError for DeserializeError {
     fn custom<T>(msg: T) -> Self
     where
         T: fmt::Display,
     {
-        Self::CustomError(&format!("custom error: {}", msg))
+        Self::CustomError(format!("custom error: {}", msg))
     }
 }
